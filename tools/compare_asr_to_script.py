@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
-import srt
+from subtitle_io import Subtitle, parse_srt_text
 
 
 @dataclass
@@ -47,8 +47,8 @@ def extract_pdf_pages(pdf: Path) -> list[str]:
     return [clean_pdf_page(page) for page in out.split("\f") if clean_pdf_page(page)]
 
 
-def read_srt_text(path: Path) -> tuple[str, list[srt.Subtitle]]:
-    subs = list(srt.parse(path.read_text(encoding="utf-8")))
+def read_srt_text(path: Path) -> tuple[str, list[Subtitle]]:
+    subs = parse_srt_text(path.read_text(encoding="utf-8"))
     return "\n".join(sub.content for sub in subs), subs
 
 
@@ -67,7 +67,7 @@ def best_page_window(asr_norm: str, pages: list[str], *, max_window: int = 12) -
     return best
 
 
-def suspicious_segments(subs: list[srt.Subtitle], script_norm: str, limit: int = 12) -> list[tuple[int, str, float]]:
+def suspicious_segments(subs: list[Subtitle], script_norm: str, limit: int = 12) -> list[tuple[int, str, float]]:
     suspicious: list[tuple[int, str, float]] = []
     for sub in subs:
         text_norm = normalize(sub.content)

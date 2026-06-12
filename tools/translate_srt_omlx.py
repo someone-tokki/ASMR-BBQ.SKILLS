@@ -8,8 +8,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-import srt
 from tqdm import tqdm
+
+from subtitle_io import Subtitle, compose_srt_text, parse_srt_text
 
 
 SYSTEM_PROMPT = """你是专业的日译中 ASMR 字幕翻译器。
@@ -115,7 +116,7 @@ def translate_chunk(
     return result
 
 
-def completed_chunk_count(subs: list[srt.Subtitle], chunk_size: int, translations: dict[int, str]) -> int:
+def completed_chunk_count(subs: list[Subtitle], chunk_size: int, translations: dict[int, str]) -> int:
     return sum(
         1
         for start in range(0, len(subs), chunk_size)
@@ -143,7 +144,7 @@ def main() -> int:
     input_path = Path(args.input_srt)
     output_path = Path(args.output_srt)
     partial_path = output_path.with_suffix(output_path.suffix + ".partial.json")
-    subs = list(srt.parse(input_path.read_text(encoding="utf-8")))
+    subs = parse_srt_text(input_path.read_text(encoding="utf-8"))
     translations: dict[int, str] = {}
     if partial_path.exists():
         saved = json.loads(partial_path.read_text(encoding="utf-8"))
@@ -190,10 +191,10 @@ def main() -> int:
     out_subs = []
     for sub in subs:
         zh = translations[sub.index]
-        out_subs.append(srt.Subtitle(index=sub.index, start=sub.start, end=sub.end, content=zh))
+        out_subs.append(Subtitle(index=sub.index, start=sub.start, end=sub.end, content=zh))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(srt.compose(out_subs), encoding="utf-8")
+    output_path.write_text(compose_srt_text(out_subs), encoding="utf-8")
     if partial_path.exists():
         partial_path.unlink()
     print(output_path)

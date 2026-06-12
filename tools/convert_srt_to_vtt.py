@@ -5,7 +5,7 @@ import argparse
 from datetime import timedelta
 from pathlib import Path
 
-import srt
+from subtitle_io import Subtitle, parse_srt_text
 
 
 def vtt_time(value: timedelta) -> str:
@@ -16,7 +16,7 @@ def vtt_time(value: timedelta) -> str:
     return f"{hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
 
 
-def compose_vtt(subtitles: list[srt.Subtitle]) -> str:
+def compose_vtt(subtitles: list[Subtitle]) -> str:
     lines = ["WEBVTT", ""]
     for subtitle in subtitles:
         lines.append(f"{vtt_time(subtitle.start)} --> {vtt_time(subtitle.end)}")
@@ -26,7 +26,7 @@ def compose_vtt(subtitles: list[srt.Subtitle]) -> str:
 
 
 def convert_file(input_path: Path, output_path: Path) -> None:
-    subtitles = list(srt.parse(input_path.read_text(encoding="utf-8")))
+    subtitles = parse_srt_text(input_path.read_text(encoding="utf-8"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(compose_vtt(subtitles), encoding="utf-8")
 

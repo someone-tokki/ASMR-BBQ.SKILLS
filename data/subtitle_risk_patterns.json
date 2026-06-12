@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "description": "High-risk ASMR subtitle scan patterns. Matches are candidates for human/agent review, not automatic errors.",
+  "patterns": [
+    {
+      "name": "asr_thanks",
+      "pattern": "感谢(?:您的)?观看|谢谢观看",
+      "problem": "May be ASR hallucination over long sounds or ending noise.",
+      "suggestion": "Check audio/source; if it is only sound, replace with a short sound cue."
+    },
+    {
+      "name": "asr_subscribe",
+      "pattern": "订阅|频道|点赞|字幕组",
+      "problem": "Often ASR/video-platform hallucination in ASMR audio.",
+      "suggestion": "Check source context before keeping as dialogue."
+    },
+    {
+      "name": "model_artifact",
+      "pattern": "语言模型|JSON|undefined|null|Markdown",
+      "problem": "Likely model or formatting artifact.",
+      "suggestion": "Remove or retranslate from the original subtitle."
+    },
+    {
+      "name": "vagus",
+      "pattern": "冥想神经",
+      "problem": "Likely mistranslation of 迷走神経.",
+      "suggestion": "Check whether it should be 迷走神经."
+    },
+    {
+      "name": "seieki_justice",
+      "pattern": "正义",
+      "problem": "Adult ASMR context may have confused 精液 with 正義.",
+      "suggestion": "Check source; often should be 精液."
+    },
+    {
+      "name": "shasei_writing",
+      "pattern": "写生|写真|书生|照片|姿势",
+      "problem": "May be ASR/translation drift from 射精 in adult ASMR.",
+      "suggestion": "Check neighboring subtitles and climax/countdown context."
+    },
+    {
+      "name": "m_otoko",
+      "pattern": "魔女",
+      "problem": "May be misread from M男 depending on context.",
+      "suggestion": "Check character/roleplay context."
+    },
+    {
+      "name": "tekoki",
+      "pattern": "手呼吸",
+      "problem": "Likely mistranslation of 手コキ or hand stimulation.",
+      "suggestion": "Check source; often should be 手冲 or 用手帮你弄."
+    },
+    {
+      "name": "shiko_urine",
+      "pattern": "尿尿|嘘嘘",
+      "problem": "May be mistaken from シコ/しっこ in adult ASMR.",
+      "suggestion": "Check source; often should be 撸/撸撸 in hand-stimulation context."
+    },
+    {
+      "name": "sourou",
+      "pattern": "僧侣|僧侶|骚动|騒動|Souro|灵魂|步态|神父",
+      "problem": "May be 早漏（そうろう） in early-ejaculation themed works.",
+      "suggestion": "Check title and recurring theme; normalize if the work is about 早漏."
+    },
+    {
+      "name": "onanie_owner",
+      "pattern": "主人|服侍主人|オーナー",
+      "problem": "May be オナニー misrecognized as owner/master wording.",
+      "suggestion": "Check whether the source is 自慰/手淫 rather than master-servant dialogue."
+    },
+    {
+      "name": "fellatio_overuse",
+      "pattern": "口交",
+      "problem": "Can be wrong when source is オナニー/ホナニー/オナサポ rather than フェラ.",
+      "suggestion": "Confirm sex act from source before keeping 口交."
+    },
+    {
+      "name": "onasuport",
+      "pattern": "自慰辅助",
+      "problem": "Term is acceptable but can sound stiff in dialogue.",
+      "suggestion": "Check whether 陪你自慰 or 帮你弄 is more natural in context."
+    },
+    {
+      "name": "doutei",
+      "pattern": "道谢室|草子",
+      "problem": "May be corrupted from 童貞喪失.",
+      "suggestion": "Check source; often should be 童贞丧失 or 破处."
+    },
+    {
+      "name": "police",
+      "pattern": "警察",
+      "problem": "May be unrelated near-sound ASR error.",
+      "suggestion": "Check source before keeping."
+    },
+    {
+      "name": "shi_houdai",
+      "pattern": "大开杀戒",
+      "problem": "May be mistranslation of し放題.",
+      "suggestion": "Check whether 想怎么做都可以 is intended."
+    },
+    {
+      "name": "nama_ecchi",
+      "pattern": "生涩",
+      "problem": "May be 生エッチ in adult ASMR.",
+      "suggestion": "Check whether 无套做爱 is intended."
+    },
+    {
+      "name": "miminame_raw",
+      "pattern": "耳舐め",
+      "problem": "Japanese term left in Chinese output.",
+      "suggestion": "Use 舔耳, 舔耳朵, or [舔耳声]."
+    },
+    {
+      "name": "love_hotel",
+      "pattern": "Love Hotel|爱情旅馆",
+      "problem": "Less natural localization for ラブホテル.",
+      "suggestion": "Use 情人旅馆 if context fits."
+    },
+    {
+      "name": "cos_layer",
+      "pattern": "图层|官方解说员",
+      "problem": "Likely mistranslation of レイヤー.",
+      "suggestion": "Use coser/官方 coser as appropriate."
+    },
+    {
+      "name": "asmr_script_artifact",
+      "pattern": "我的Cosplay",
+      "problem": "May be model literalization or odd phrasing.",
+      "suggestion": "Check source and make the cosplay reference natural."
+    }
+  ]
+}

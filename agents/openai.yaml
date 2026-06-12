@@ -1,0 +1,4 @@
+interface:
+  display_name: "ASMR Subtitle Translator"
+  short_description: "Agent workflow for Japanese ASMR subtitles"
+  default_prompt: "Use $asmr-subtitle-translator to translate and QC this Japanese ASMR subtitle project."

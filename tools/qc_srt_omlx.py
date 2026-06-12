@@ -6,9 +6,9 @@ import json
 import time
 from pathlib import Path
 
-import srt
 from tqdm import tqdm
 
+from subtitle_io import parse_srt_text
 from translate_srt_omlx import extract_json_array, post_json
 
 
@@ -20,8 +20,8 @@ SYSTEM_PROMPT = """你是日译中 ASMR 字幕质检员。
 
 
 def load_pairs(ja_path: Path, zh_path: Path) -> list[dict]:
-    ja_subs = list(srt.parse(ja_path.read_text(encoding="utf-8")))
-    zh_subs = list(srt.parse(zh_path.read_text(encoding="utf-8")))
+    ja_subs = parse_srt_text(ja_path.read_text(encoding="utf-8"))
+    zh_subs = parse_srt_text(zh_path.read_text(encoding="utf-8"))
     if len(ja_subs) != len(zh_subs):
         raise ValueError(f"count mismatch: {ja_path.name} {len(ja_subs)} != {zh_path.name} {len(zh_subs)}")
     pairs: list[dict] = []
@@ -73,6 +73,16 @@ def qc_chunk(items: list[dict], *, url: str, api_key: str, model: str, timeout: 
     return clean
 
 
+def read_context(context: str, context_file: str) -> str:
+    parts: list[str] = []
+    if context:
+        parts.append(context.strip())
+    if context_file:
+        path = Path(context_file)
+        parts.append(path.read_text(encoding="utf-8").strip())
+    return "\n\n".join(part for part in parts if part).strip()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--asr-dir", required=True)
@@ -84,12 +94,14 @@ def main() -> int:
     parser.add_argument("--chunk-size", type=int, default=18)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--context", default="", help="Brief work-specific context and known ASR risks for QC.")
+    parser.add_argument("--context-file", default="", help="Optional Markdown/text context profile to include in QC prompts.")
     args = parser.parse_args()
 
     asr_dir = Path(args.asr_dir)
     zh_dir = Path(args.zh_dir)
     out = Path(args.out)
     url = args.base_url.rstrip("/") + "/chat/completions"
+    context = read_context(args.context, args.context_file)
     report: dict[str, list[dict]] = {}
 
     ja_files = sorted(asr_dir.glob("*.ja.asr.srt"))
@@ -119,7 +131,7 @@ def main() -> int:
                                     api_key=args.api_key,
                                     model=args.model,
                                     timeout=args.timeout,
-                                    context=args.context,
+                                    context=context,
                                 )
                             )
                             break
