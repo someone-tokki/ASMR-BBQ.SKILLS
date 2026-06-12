@@ -5,6 +5,7 @@
 ## 分流原则
 
 - 先盘点输入：音频、官方台本/初稿/PDF/TXT/HTML、已有 `.ja.asr.srt`、已有 `.zh.srt`/`.zh.vtt`、促销/试听目录、用户要求的输出格式。
+- 若音频包里同时存在有 SE/无 SE 版本，默认优先用无 SE 版本跑 ASR；如果用户明确指定要用其他版本，则用户指定优先。
 - 默认最终输出为 `.zh.vtt`；用户可明确选择 `srt` 或 `both`。`.zh.srt` 默认仍是工作中间稿。
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
 - 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查或格式转换。
@@ -25,12 +26,13 @@
 ## 开工步骤
 
 1. 识别 `work_id`、源音频目录、促销/试听目录、台本状态、已有 ASR/中文字幕状态和输出格式。
-2. 如果识别到 RJ 号且允许联网，先用 `tools/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `generated_subtitles/<work_id>/dlsite_work_info.json`。抓取失败不阻塞流程。
-3. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
-4. 按路线读取有台本或无台本 workflow。
-5. 创建或更新 `generated_subtitles/<work_id>/project_config.json`。
-6. 跑 `tools/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
-7. 进入对应 workflow 的执行步骤。
+2. 如果识别到 RJ 号且允许联网，先用 `scripts/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `generated_subtitles/<work_id>/dlsite_work_info.json`。抓取失败不阻塞流程。
+3. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；无 SE 只是默认推荐，用户指定版本时用用户指定。
+4. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
+5. 按路线读取有台本或无台本 workflow。
+6. 创建或更新 `generated_subtitles/<work_id>/project_config.json`。
+7. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
+8. 进入对应 workflow 的执行步骤。
 
 ## 模型任务边界
 

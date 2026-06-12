@@ -6,6 +6,7 @@ import importlib.util
 import json
 import platform
 import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -28,13 +29,25 @@ REQUIRED_SCRIPTS = [
     "convert_srt_to_vtt.py",
     "validate_subtitles.py",
     "scan_subtitle_risks.py",
+    "select_asr_audio_source.py",
     "subtitle_readability.py",
     "review_qc_report.py",
     "manage_project_config.py",
     "check_environment.py",
 ]
 CORE_IMPORTS = [
-    ("tqdm", "Required by batch/long-running ASR, translation, and QC scripts."),
+    {
+        "module": "tqdm",
+        "package": "tqdm",
+        "status_if_missing": "FAIL",
+        "detail": "Required by batch/long-running ASR, translation, and QC scripts.",
+    },
+    {
+        "module": "yaml",
+        "package": "PyYAML",
+        "status_if_missing": "WARN",
+        "detail": "Needed by skill-creator validation helpers and YAML metadata checks; not required for subtitle runtime.",
+    },
 ]
 
 
@@ -95,6 +108,18 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def missing_installable_python_packages() -> list[dict[str, str]]:
+    missing: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for dep in CORE_IMPORTS:
+        module = dep["module"]
+        package = dep["package"]
+        if not module_available(module) and package not in seen:
+            missing.append(dep)
+            seen.add(package)
+    return missing
 
 
 def is_wsl() -> bool:
@@ -338,9 +363,9 @@ def check_asr_recommendation(config: dict[str, Any] | None, *, require_asr: bool
 
 def check_scripts() -> list[Check]:
     checks: list[Check] = []
-    tools_dir = repo_root() / "tools"
+    scripts_dir = repo_root() / "scripts"
     for script in REQUIRED_SCRIPTS:
-        path = tools_dir / script
+        path = scripts_dir / script
         status = "OK" if path.exists() else "FAIL"
         message = f"Found {rel(path)}" if path.exists() else f"Missing {rel(path)}"
         checks.append(Check("scripts", script, status, message))
@@ -349,14 +374,16 @@ def check_scripts() -> list[Check]:
 
 def check_imports(config: dict[str, Any] | None, *, require_asr: bool) -> list[Check]:
     checks: list[Check] = []
-    for name, detail in CORE_IMPORTS:
+    for dep in CORE_IMPORTS:
+        name = dep["module"]
+        available = module_available(name)
         checks.append(
             Check(
                 "imports",
                 name,
-                "OK" if module_available(name) else "FAIL",
-                "Import is available" if module_available(name) else "Import is not available",
-                detail,
+                "OK" if available else dep["status_if_missing"],
+                "Import is available" if available else f"Import is not available; install package `{dep['package']}`",
+                dep["detail"],
             )
         )
 
@@ -380,6 +407,56 @@ def check_imports(config: dict[str, Any] | None, *, require_asr: bool) -> list[C
             "Required only when the project must run new ASR through mlx_whisper. Existing *.ja.asr.srt files can skip this backend.",
         )
     )
+    return checks
+
+
+def check_dependency_install_plan() -> list[Check]:
+    missing = missing_installable_python_packages()
+    if not missing:
+        return [Check("install", "python_packages", "OK", "No missing installable Python packages")]
+    package_list = " ".join(dep["package"] for dep in missing)
+    return [
+        Check(
+            "install",
+            "python_packages",
+            "WARN",
+            f"Missing installable package(s): {package_list}",
+            f"To install into the active interpreter: {sys.executable} -m pip install {package_list}",
+        )
+    ]
+
+
+def install_missing_python_packages(*, dry_run: bool) -> list[Check]:
+    missing = missing_installable_python_packages()
+    if not missing:
+        return [Check("install", "python_packages", "OK", "No Python packages to install")]
+
+    checks: list[Check] = []
+    for dep in missing:
+        package = dep["package"]
+        command = [sys.executable, "-m", "pip", "install", package]
+        if dry_run:
+            checks.append(
+                Check(
+                    "install",
+                    package,
+                    "WARN",
+                    "Dry run; package not installed",
+                    " ".join(command),
+                )
+            )
+            continue
+        try:
+            result = subprocess.run(command, text=True, capture_output=True, check=False)
+        except OSError as exc:
+            checks.append(Check("install", package, "FAIL", "Could not start pip", str(exc)))
+            continue
+        if result.returncode == 0:
+            checks.append(Check("install", package, "OK", "Installed package", "Output suppressed; rerun environment check to verify imports."))
+        else:
+            detail = (result.stderr or result.stdout or "").strip().splitlines()
+            checks.append(Check("install", package, "FAIL", f"pip exited with {result.returncode}", detail[-1] if detail else "No pip output"))
+    importlib.invalidate_caches()
     return checks
 
 
@@ -637,7 +714,7 @@ def write_json_report(path: Path, checks: list[Check]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check the local ASMR subtitle workflow environment without modifying subtitle files.")
+    parser = argparse.ArgumentParser(description="Check the local ASMR subtitle workflow environment and optionally install small Python dependencies.")
     parser.add_argument("--config", help="Path to project_config.json or a project output root.")
     parser.add_argument("--translate-base-url", default="", help="Override the configured OpenAI-compatible base URL.")
     parser.add_argument("--api-key", default="", help="Optional API key for the /models reachability check. The value is never printed.")
@@ -645,6 +722,8 @@ def main() -> int:
     parser.add_argument("--skip-api", action="store_true", help="Skip local translation API reachability check.")
     parser.add_argument("--require-asr", action="store_true", help="Treat missing ASR backend/files as blocking because new ASR will be run.")
     parser.add_argument("--strict-paths", action="store_true", help="Treat missing generated/work directories as FAIL instead of WARN.")
+    parser.add_argument("--install-missing-python", action="store_true", help="Install missing installable Python packages into the active interpreter with pip.")
+    parser.add_argument("--dry-run-install", action="store_true", help="Show pip install commands without installing packages.")
     parser.add_argument("--json-out", help="Write a JSON environment report.")
     args = parser.parse_args()
 
@@ -653,7 +732,12 @@ def main() -> int:
     checks.extend(check_backend_recommendation(config))
     checks.extend(check_asr_recommendation(config, require_asr=args.require_asr))
     checks.extend(check_scripts())
-    checks.extend(check_imports(config, require_asr=args.require_asr))
+    if args.install_missing_python or args.dry_run_install:
+        checks.extend(install_missing_python_packages(dry_run=args.dry_run_install))
+        checks.extend(check_imports(config, require_asr=args.require_asr))
+    else:
+        checks.extend(check_imports(config, require_asr=args.require_asr))
+        checks.extend(check_dependency_install_plan())
     checks.extend(check_external_tools(config))
     checks.extend(check_config_paths(config, strict_paths=args.strict_paths))
     checks.extend(

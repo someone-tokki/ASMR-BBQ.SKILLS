@@ -9,31 +9,31 @@ Do not record private paths, API keys, model secrets, or large command logs here
 - Current task: implement subtitle validation, risk scanning, and ASMR readability checks.
 - Completed:
   - Created this implementation log.
-  - Added `tools/validate_subtitles.py` for SRT structure checks, ASR/translation pair alignment, final directory warnings, text output, JSON output, and error exit codes.
-  - Added `tools/scan_subtitle_risks.py` for read-only high-risk ASR/translation term scanning with text and JSON output.
-  - Added `tools/subtitle_readability.py` for ASMR-focused density, CPS, line length, repeated sound, and over-fragmentation warnings.
-  - Added `tools/subtitle_io.py` so the new checking scripts can parse SRT without requiring the third-party `srt` package.
+  - Added `scripts/validate_subtitles.py` for SRT structure checks, ASR/translation pair alignment, final directory warnings, text output, JSON output, and error exit codes.
+  - Added `scripts/scan_subtitle_risks.py` for read-only high-risk ASR/translation term scanning with text and JSON output.
+  - Added `scripts/subtitle_readability.py` for ASMR-focused density, CPS, line length, repeated sound, and over-fragmentation warnings.
+  - Added `scripts/subtitle_io.py` so the new checking scripts can parse SRT without requiring the third-party `srt` package.
   - Updated workflow docs to point at the new validation, risk scan, and readability scripts.
   - Updated output-format guidance: default final output is `.zh.vtt`, but users can request `srt` or `both`; `.zh.srt` remains the working format.
   - Updated corpus readability guidance with the 10 Chinese chars/second ASMR warning threshold and the "do not over-fragment" rule.
 - Modified files:
   - `docs/implementation_log.md`
-  - `tools/validate_subtitles.py`
-  - `tools/scan_subtitle_risks.py`
-  - `tools/subtitle_readability.py`
-  - `tools/subtitle_io.py`
+  - `scripts/validate_subtitles.py`
+  - `scripts/scan_subtitle_risks.py`
+  - `scripts/subtitle_readability.py`
+  - `scripts/subtitle_io.py`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/asmr_translation_corpus.md`
 - Validation commands:
-  - `python -B -m py_compile tools/subtitle_io.py tools/validate_subtitles.py tools/scan_subtitle_risks.py tools/subtitle_readability.py`
-  - `python tools/validate_subtitles.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声`
-  - `python tools/validate_subtitles.py --asr-dir generated_subtitles/RJ01201653/asr_large_v3_4bit --zh-dir "generated_subtitles/RJ01201653/WAV 本編"`
-  - `python tools/validate_subtitles.py --asr-dir generated_subtitles/RJ01201653/promo_asr_large_v3_4bit --zh-dir generated_subtitles/RJ01201653/プロモーション用音声`
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声`
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01201653/WAV\ 本編 generated_subtitles/RJ01201653/プロモーション用音声`
-  - `python tools/subtitle_readability.py generated_subtitles/RJ01533156/音声`
-  - `python tools/subtitle_readability.py generated_subtitles/RJ01201653/WAV\ 本編`
+  - `python -B -m py_compile scripts/subtitle_io.py scripts/validate_subtitles.py scripts/scan_subtitle_risks.py scripts/subtitle_readability.py`
+  - `python scripts/validate_subtitles.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声`
+  - `python scripts/validate_subtitles.py --asr-dir generated_subtitles/RJ01201653/asr_large_v3_4bit --zh-dir "generated_subtitles/RJ01201653/WAV 本編"`
+  - `python scripts/validate_subtitles.py --asr-dir generated_subtitles/RJ01201653/promo_asr_large_v3_4bit --zh-dir generated_subtitles/RJ01201653/プロモーション用音声`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01201653/WAV\ 本編 generated_subtitles/RJ01201653/プロモーション用音声`
+  - `python scripts/subtitle_readability.py generated_subtitles/RJ01533156/音声`
+  - `python scripts/subtitle_readability.py generated_subtitles/RJ01201653/WAV\ 本編`
   - Temporary fixtures under `/private/tmp/asmr_subs_checks` for empty subtitles, overlaps, missing translations, timeline mismatch, high-risk words, high CPS, and over-fragmentation.
 - Validation results:
   - Syntax check passed without third-party subtitle dependencies.
@@ -52,19 +52,19 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: implement a QC suggestion review workflow.
 - Completed:
-  - Inspected `tools/qc_srt_omlx.py` and the existing `qc_report.json` shape.
-  - Added `tools/review_qc_report.py` to convert `qc_report.json` into a Markdown decision template and optional normalized JSON.
+  - Inspected `scripts/qc_srt_omlx.py` and the existing `qc_report.json` shape.
+  - Added `scripts/review_qc_report.py` to convert `qc_report.json` into a Markdown decision template and optional normalized JSON.
   - Updated both workflow docs to generate `qc_review.md` after model QC and before accepting any suggestion.
   - Revised the QC workflow: first model QC pass and correction are mandatory, but human review is optional and used for second-pass QC, unresolved items, conflicting suggestions, or user-requested intervention.
 - Modified files:
   - `docs/implementation_log.md`
-  - `tools/review_qc_report.py`
+  - `scripts/review_qc_report.py`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
 - Validation commands:
-  - `python -B -m py_compile tools/subtitle_io.py tools/review_qc_report.py`
-  - `python -B tools/review_qc_report.py generated_subtitles/RJ01533156/qc_report.json --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声 --out /private/tmp/asmr_subs_checks/qc_review.md --json-out /private/tmp/asmr_subs_checks/qc_review_items.json`
-  - `python -B tools/review_qc_report.py generated_subtitles/RJ01533156/qc_report.json --out /private/tmp/asmr_subs_checks/qc_review_report_only.md`
+  - `python -B -m py_compile scripts/subtitle_io.py scripts/review_qc_report.py`
+  - `python -B scripts/review_qc_report.py generated_subtitles/RJ01533156/qc_report.json --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声 --out /private/tmp/asmr_subs_checks/qc_review.md --json-out /private/tmp/asmr_subs_checks/qc_review_items.json`
+  - `python -B scripts/review_qc_report.py generated_subtitles/RJ01533156/qc_report.json --out /private/tmp/asmr_subs_checks/qc_review_report_only.md`
   - Temporary fixture `/private/tmp/asmr_subs_checks/tiny_qc.json` with one valid issue, one invalid index, one empty issue, and one empty file issue list.
 - Validation results:
   - Syntax check passed.
@@ -87,7 +87,7 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: add configuration and reproducibility records.
 - Completed:
-  - Added `tools/manage_project_config.py` to create and inspect `project_config.json`.
+  - Added `scripts/manage_project_config.py` to create and inspect `project_config.json`.
   - Added workflow guidance to create `project_config.json` early in both with-script and no-script projects.
   - Config records include work ID, project type, platform info, key paths, backend/model names, chunk sizes, output format, report paths, and notes.
   - Config records intentionally do not store API keys and do not drive the workflow yet.
@@ -95,16 +95,16 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Created `generated_subtitles/RJ01533156/project_config.json`.
 - Modified files:
   - `docs/implementation_log.md`
-  - `tools/manage_project_config.py`
+  - `scripts/manage_project_config.py`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `generated_subtitles/RJ01201653/project_config.json`
   - `generated_subtitles/RJ01533156/project_config.json`
 - Validation commands:
-  - `python -B -m py_compile tools/manage_project_config.py`
-  - `python tools/manage_project_config.py show generated_subtitles/RJ01533156`
-  - `python tools/manage_project_config.py show generated_subtitles/RJ01201653`
-  - `python tools/manage_project_config.py show generated_subtitles/RJ01201653/project_config.json --json`
+  - `python -B -m py_compile scripts/manage_project_config.py`
+  - `python scripts/manage_project_config.py show generated_subtitles/RJ01533156`
+  - `python scripts/manage_project_config.py show generated_subtitles/RJ01201653`
+  - `python scripts/manage_project_config.py show generated_subtitles/RJ01201653/project_config.json --json`
   - JSON assertion that both generated configs have `config_version`, `work_id`, and valid `output_format`.
 - Validation results:
   - Syntax check passed.
@@ -120,23 +120,23 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: add environment detection.
 - Completed:
-  - Added `tools/check_environment.py` as a read-only environment report script.
+  - Added `scripts/check_environment.py` as a read-only environment report script.
   - The script reports `OK` / `WARN` / `FAIL` checks for platform, Python version, required workflow scripts, Python imports, external commands, configured project paths, artifacts, and local translation API reachability.
   - The script supports `--config`, `--json-out`, `--translate-base-url`, `--api-key`, `--timeout`, `--skip-api`, and `--strict-paths`.
   - Missing core scripts, invalid config, invalid output format, missing core imports, and configured required ASR backends can fail the report.
   - Optional future backends such as `ollama`, not-yet-started APIs, and generated directories that may be created later are warnings by default.
   - Updated both workflow docs to run environment detection immediately after `project_config.json` creation and before ASR.
 - Modified files:
-  - `tools/check_environment.py`
+  - `scripts/check_environment.py`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/check_environment.py`
-  - `python tools/check_environment.py --skip-api`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/asmr_env_report_rj01533156.json --skip-api`
+  - `python -B -m py_compile scripts/check_environment.py`
+  - `python scripts/check_environment.py --skip-api`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/asmr_env_report_rj01533156.json --skip-api`
   - `python -B -c 'import json; p="/private/tmp/asmr_env_report_rj01533156.json"; data=json.load(open(p, encoding="utf-8")); assert data["overall_status"]=="FAIL"; assert any(c["name"]=="srt" and c["status"]=="FAIL" for c in data["checks"]); print(data["overall_status"], data["counts"])'`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --json-out /private/tmp/asmr_env_report_rj01201653.json --skip-api`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --json-out /private/tmp/asmr_env_report_rj01201653.json --skip-api`
 - Validation results:
   - Syntax check passed.
   - JSON report shape was verified for RJ01533156.
@@ -166,16 +166,16 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/implementation_log.md`
-  - `tools/check_environment.py`
-  - `tools/manage_project_config.py`
+  - `scripts/check_environment.py`
+  - `scripts/manage_project_config.py`
 - Validation commands:
-  - `python -B -m py_compile tools/check_environment.py tools/manage_project_config.py`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/asmr_env_report_task14_rj01533156.json --skip-api`
-  - `python tools/manage_project_config.py init /private/tmp/asmr_win_profile --work-id TMPWIN --project-type no-script --platform-profile windows-ollama --translate-backend auto --output-format vtt --overwrite`
-  - `python tools/manage_project_config.py init /private/tmp/asmr_ollama_required --work-id TMPOLLAMA --project-type no-script --platform-profile windows-ollama --translate-backend ollama --output-format vtt --overwrite`
-  - `python tools/check_environment.py --config /private/tmp/asmr_win_profile/project_config.json --json-out /private/tmp/asmr_env_report_task14_windows_auto.json --skip-api`
-  - `python tools/check_environment.py --config /private/tmp/asmr_ollama_required/project_config.json --json-out /private/tmp/asmr_env_report_task14_ollama_required.json --skip-api`
-  - `python tools/manage_project_config.py show /private/tmp/asmr_win_profile/project_config.json`
+  - `python -B -m py_compile scripts/check_environment.py scripts/manage_project_config.py`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/asmr_env_report_task14_rj01533156.json --skip-api`
+  - `python scripts/manage_project_config.py init /private/tmp/asmr_win_profile --work-id TMPWIN --project-type no-script --platform-profile windows-ollama --translate-backend auto --output-format vtt --overwrite`
+  - `python scripts/manage_project_config.py init /private/tmp/asmr_ollama_required --work-id TMPOLLAMA --project-type no-script --platform-profile windows-ollama --translate-backend ollama --output-format vtt --overwrite`
+  - `python scripts/check_environment.py --config /private/tmp/asmr_win_profile/project_config.json --json-out /private/tmp/asmr_env_report_task14_windows_auto.json --skip-api`
+  - `python scripts/check_environment.py --config /private/tmp/asmr_ollama_required/project_config.json --json-out /private/tmp/asmr_env_report_task14_ollama_required.json --skip-api`
+  - `python scripts/manage_project_config.py show /private/tmp/asmr_win_profile/project_config.json`
 - Validation results:
   - Syntax checks passed.
   - Current macOS config still reports `openai-compatible` as the platform default.
@@ -209,7 +209,7 @@ Do not record private paths, API keys, model secrets, or large command logs here
 - Open questions:
   - If installing this as a discoverable local Codex skill, the skill folder should be installed or copied under the skill name `asmr-subtitle-translator`.
 - Next:
-  - Use `SKILL.md` as the agent entrypoint for future ASMR subtitle work; keep detailed workflow logic in `docs/` and checks in `tools/`.
+  - Use `SKILL.md` as the agent entrypoint for future ASMR subtitle work; keep detailed workflow logic in `docs/` and checks in `scripts/`.
 
 ## 2026-06-12 - Skill Maintenance Rule
 
@@ -261,7 +261,7 @@ Do not record private paths, API keys, model secrets, or large command logs here
 - Current task: structure risk scan rules outside the scanner.
 - Completed:
   - Added `data/subtitle_risk_patterns.json` with the existing 21 high-risk scan patterns.
-  - Updated `tools/scan_subtitle_risks.py` to load structured JSON rules by default.
+  - Updated `scripts/scan_subtitle_risks.py` to load structured JSON rules by default.
   - Added `--rules <rules.json>` for testing or project-specific rule files.
   - Kept built-in fallback rules for the default rules path if the file is missing.
   - Explicitly provided missing/invalid rules files now return exit code `2`.
@@ -269,22 +269,22 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Updated `SKILL.md`, both workflow docs, and the corpus so future mechanically scannable risks are added to `data/subtitle_risk_patterns.json`.
 - Modified files:
   - `data/subtitle_risk_patterns.json`
-  - `tools/scan_subtitle_risks.py`
+  - `scripts/scan_subtitle_risks.py`
   - `SKILL.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/asmr_translation_corpus.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/scan_subtitle_risks.py`
+  - `python -B -m py_compile scripts/scan_subtitle_risks.py`
   - JSON assertion that `data/subtitle_risk_patterns.json` has `version=1`, unique names, and required fields.
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --json-out /private/tmp/risk_default_rj01533156.json`
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/subtitle_risk_patterns.json --json-out /private/tmp/risk_explicit_rj01533156.json`
-  - `python tools/scan_subtitle_risks.py 'generated_subtitles/RJ01201653/WAV 本編' generated_subtitles/RJ01201653/プロモーション用音声 --json-out /private/tmp/risk_default_rj01201653.json`
-  - `python tools/scan_subtitle_risks.py 'generated_subtitles/RJ01201653/WAV 本編' generated_subtitles/RJ01201653/プロモーション用音声 --rules data/subtitle_risk_patterns.json --json-out /private/tmp/risk_explicit_rj01201653.json`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --json-out /private/tmp/risk_default_rj01533156.json`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/subtitle_risk_patterns.json --json-out /private/tmp/risk_explicit_rj01533156.json`
+  - `python scripts/scan_subtitle_risks.py 'generated_subtitles/RJ01201653/WAV 本編' generated_subtitles/RJ01201653/プロモーション用音声 --json-out /private/tmp/risk_default_rj01201653.json`
+  - `python scripts/scan_subtitle_risks.py 'generated_subtitles/RJ01201653/WAV 本編' generated_subtitles/RJ01201653/プロモーション用音声 --rules data/subtitle_risk_patterns.json --json-out /private/tmp/risk_explicit_rj01201653.json`
   - JSON assertion that default and explicit rules produced identical findings for RJ01533156 and RJ01201653.
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/subtitle_risk_patterns.json --fail-on-findings`
-  - `python tools/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/does_not_exist.json`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/subtitle_risk_patterns.json --fail-on-findings`
+  - `python scripts/scan_subtitle_risks.py generated_subtitles/RJ01533156/音声 --rules data/does_not_exist.json`
 - Validation results:
   - Syntax check passed.
   - Rules JSON contains 21 unique patterns.
@@ -301,32 +301,32 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: make core subtitle workflow scripts stop requiring the third-party `srt` package.
 - Completed:
-  - Added SRT composition helpers to `tools/subtitle_io.py`.
-  - Migrated `tools/convert_srt_to_vtt.py` from third-party `srt` to local `subtitle_io`.
-  - Migrated `tools/qc_srt_omlx.py` pair loading from third-party `srt` to local `subtitle_io`.
-  - Migrated `tools/translate_srt_omlx.py` parsing and output composition from third-party `srt` to local `subtitle_io`.
-  - Migrated `tools/compare_asr_to_script.py` SRT loading from third-party `srt` to local `subtitle_io`.
-  - Fixed a stale `srt.Subtitle` type annotation in `tools/subtitle_readability.py`.
-  - Updated `tools/check_environment.py` so missing `srt` is no longer a core import failure.
-  - Updated `SKILL.md` and workflow dependency docs to state that core scripts use `tools/subtitle_io.py` instead of the third-party `srt` package.
+  - Added SRT composition helpers to `scripts/subtitle_io.py`.
+  - Migrated `scripts/convert_srt_to_vtt.py` from third-party `srt` to local `subtitle_io`.
+  - Migrated `scripts/qc_srt_omlx.py` pair loading from third-party `srt` to local `subtitle_io`.
+  - Migrated `scripts/translate_srt_omlx.py` parsing and output composition from third-party `srt` to local `subtitle_io`.
+  - Migrated `scripts/compare_asr_to_script.py` SRT loading from third-party `srt` to local `subtitle_io`.
+  - Fixed a stale `srt.Subtitle` type annotation in `scripts/subtitle_readability.py`.
+  - Updated `scripts/check_environment.py` so missing `srt` is no longer a core import failure.
+  - Updated `SKILL.md` and workflow dependency docs to state that core scripts use `scripts/subtitle_io.py` instead of the third-party `srt` package.
 - Modified files:
-  - `tools/subtitle_io.py`
-  - `tools/convert_srt_to_vtt.py`
-  - `tools/qc_srt_omlx.py`
-  - `tools/translate_srt_omlx.py`
-  - `tools/compare_asr_to_script.py`
-  - `tools/subtitle_readability.py`
-  - `tools/check_environment.py`
+  - `scripts/subtitle_io.py`
+  - `scripts/convert_srt_to_vtt.py`
+  - `scripts/qc_srt_omlx.py`
+  - `scripts/translate_srt_omlx.py`
+  - `scripts/compare_asr_to_script.py`
+  - `scripts/subtitle_readability.py`
+  - `scripts/check_environment.py`
   - `SKILL.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/subtitle_io.py tools/convert_srt_to_vtt.py tools/qc_srt_omlx.py tools/translate_srt_omlx.py tools/compare_asr_to_script.py tools/subtitle_readability.py tools/check_environment.py`
+  - `python -B -m py_compile scripts/subtitle_io.py scripts/convert_srt_to_vtt.py scripts/qc_srt_omlx.py scripts/translate_srt_omlx.py scripts/compare_asr_to_script.py scripts/subtitle_readability.py scripts/check_environment.py`
   - Search for remaining `import srt`, `srt.parse`, `srt.compose`, `srt.Subtitle`, and `list[srt` references.
-  - `python tools/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --skip-api`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --skip-api`
-  - `python tools/convert_srt_to_vtt.py generated_subtitles/RJ01533156/音声 /private/tmp/asmr_vtt_migrated --glob '*.zh.srt' --overwrite`
-  - `python tools/validate_subtitles.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --skip-api`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --skip-api`
+  - `python scripts/convert_srt_to_vtt.py generated_subtitles/RJ01533156/音声 /private/tmp/asmr_vtt_migrated --glob '*.zh.srt' --overwrite`
+  - `python scripts/validate_subtitles.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声`
   - Direct `qc_srt_omlx.load_pairs` check on RJ01533156 prologue.
   - Direct `subtitle_io.compose_srt_text` roundtrip check.
   - Direct `compare_asr_to_script.read_srt_text` check on RJ01533156 prologue ASR.
@@ -347,28 +347,28 @@ Do not record private paths, API keys, model secrets, or large command logs here
 - Current task: avoid blocking translation/QC when local MLX ASR is unavailable but ASR files already exist.
 - Completed:
   - Changed new `project_config.json` records to default `asr_backend=auto`.
-  - Added ASR backend recommendation checks to `tools/check_environment.py`.
+  - Added ASR backend recommendation checks to `scripts/check_environment.py`.
   - Added existing `*.ja.asr.srt` detection for configured `asr_dir` and `promo_asr_dir`.
   - Missing `mlx_whisper` is now a warning when existing ASR files are present and the current run does not require new ASR.
   - Added `--require-asr` to `check_environment.py` for runs that must create new ASR files.
   - Windows/WSL target profiles now default ASR to an external/Whisper-compatible route rather than MLX.
   - Updated `SKILL.md`, both workflow docs, and `docs/platform_compatibility.md` to describe `asr_backend=auto`, existing-ASR skip behavior, and `--require-asr`.
 - Modified files:
-  - `tools/check_environment.py`
-  - `tools/manage_project_config.py`
+  - `scripts/check_environment.py`
+  - `scripts/manage_project_config.py`
   - `SKILL.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/platform_compatibility.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/check_environment.py tools/manage_project_config.py`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/env_asr_existing_rj01533156.json --skip-api`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --require-asr --json-out /private/tmp/env_asr_required_rj01533156.json --skip-api`
-  - `python tools/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --json-out /private/tmp/env_asr_existing_rj01201653.json --skip-api`
-  - `python tools/manage_project_config.py init /private/tmp/asmr_auto_asr_profile --work-id TMPASR --project-type no-script --platform-profile windows-ollama --output-format vtt --overwrite`
-  - `python tools/manage_project_config.py show /private/tmp/asmr_auto_asr_profile/project_config.json`
-  - `python tools/check_environment.py --config /private/tmp/asmr_auto_asr_profile/project_config.json --json-out /private/tmp/env_asr_auto_empty.json --skip-api`
+  - `python -B -m py_compile scripts/check_environment.py scripts/manage_project_config.py`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --json-out /private/tmp/env_asr_existing_rj01533156.json --skip-api`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01533156/project_config.json --require-asr --json-out /private/tmp/env_asr_required_rj01533156.json --skip-api`
+  - `python scripts/check_environment.py --config generated_subtitles/RJ01201653/project_config.json --json-out /private/tmp/env_asr_existing_rj01201653.json --skip-api`
+  - `python scripts/manage_project_config.py init /private/tmp/asmr_auto_asr_profile --work-id TMPASR --project-type no-script --platform-profile windows-ollama --output-format vtt --overwrite`
+  - `python scripts/manage_project_config.py show /private/tmp/asmr_auto_asr_profile/project_config.json`
+  - `python scripts/check_environment.py --config /private/tmp/asmr_auto_asr_profile/project_config.json --json-out /private/tmp/env_asr_auto_empty.json --skip-api`
 - Validation results:
   - Syntax checks passed.
   - RJ01533156 default environment check is now `WARN`, not `FAIL`, because 4 existing ASR files are present and missing `mlx_whisper` is non-blocking for translation/QC.
@@ -421,38 +421,38 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: keep the workflow agent-led, skip a one-click workflow runner, and tool the QC correction and learning-library maintenance steps.
 - Completed:
-  - Added `tools/apply_qc_decisions.py` to apply only accepted QC review decisions to Chinese SRT files.
-  - Added `tools/manage_qc_refinement.py` to create optional post-mandatory-QC refinement rounds with separate manifests and command checklists.
+  - Added `scripts/apply_qc_decisions.py` to apply only accepted QC review decisions to Chinese SRT files.
+  - Added `scripts/manage_qc_refinement.py` to create optional post-mandatory-QC refinement rounds with separate manifests and command checklists.
   - Kept QC correction evidence-driven: the tool defaults to dry-run, requires agent-edited `accept` decisions, checks stale current text, and can write backups before applying.
-  - Added `tools/update_learning_library.py` to draft a per-project learning update and optionally append a project lesson skeleton.
-  - Updated `tools/review_qc_report.py` output guidance to include the decision JSON workflow.
+  - Added `scripts/update_learning_library.py` to draft a per-project learning update and optionally append a project lesson skeleton.
+  - Updated `scripts/review_qc_report.py` output guidance to include the decision JSON workflow.
   - Updated `SKILL.md` and both workflow docs with the new QC correction and learning-library tool steps.
   - Removed the workflow implication that a future one-click runner is expected; `project_config.json` is now described as a shared agent/tool recovery record.
   - Reframed post-mandatory QC correction as an optional user-triggered refinement feature for one or more focused QC rounds.
 - Modified files:
-  - `tools/apply_qc_decisions.py`
-  - `tools/manage_qc_refinement.py`
-  - `tools/update_learning_library.py`
-  - `tools/review_qc_report.py`
+  - `scripts/apply_qc_decisions.py`
+  - `scripts/manage_qc_refinement.py`
+  - `scripts/update_learning_library.py`
+  - `scripts/review_qc_report.py`
   - `SKILL.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/apply_qc_decisions.py tools/update_learning_library.py tools/review_qc_report.py tools/manage_qc_refinement.py`
+  - `python -B -m py_compile scripts/apply_qc_decisions.py scripts/update_learning_library.py scripts/review_qc_report.py scripts/manage_qc_refinement.py`
   - Created a temporary QC apply fixture under `/private/tmp/asmr_qc_apply_fixture`.
-  - `python tools/review_qc_report.py /private/tmp/asmr_qc_apply_fixture/qc_report.json --asr-dir /private/tmp/asmr_qc_apply_fixture/asr --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --out /private/tmp/asmr_qc_apply_fixture/qc_review.md --json-out /private/tmp/asmr_qc_apply_fixture/qc_review_items.json`
+  - `python scripts/review_qc_report.py /private/tmp/asmr_qc_apply_fixture/qc_report.json --asr-dir /private/tmp/asmr_qc_apply_fixture/asr --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --out /private/tmp/asmr_qc_apply_fixture/qc_review.md --json-out /private/tmp/asmr_qc_apply_fixture/qc_review_items.json`
   - Edited the temporary `qc_review_items.json` to mark one item as `accept` with a replacement.
-  - `python tools/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/apply_dry.json`
-  - `python tools/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --apply --backup-dir /private/tmp/asmr_qc_apply_fixture/backup --json-out /private/tmp/asmr_qc_apply_fixture/apply_report.json`
-  - `python tools/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/apply_after_sequential.json`
-  - `python tools/validate_subtitles.py --asr-dir /private/tmp/asmr_qc_apply_fixture/asr --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/validate_after_apply.json`
-  - `python tools/update_learning_library.py generated_subtitles/RJ01533156 --out /private/tmp/learning_update_rj01533156.md`
-  - `python tools/update_learning_library.py generated_subtitles/RJ01533156 --append-project-lesson --project-lessons /private/tmp/project-lessons-test.md --out /private/tmp/learning_update_append_test.md`
+  - `python scripts/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/apply_dry.json`
+  - `python scripts/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --apply --backup-dir /private/tmp/asmr_qc_apply_fixture/backup --json-out /private/tmp/asmr_qc_apply_fixture/apply_report.json`
+  - `python scripts/apply_qc_decisions.py /private/tmp/asmr_qc_apply_fixture/qc_review_items.json --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/apply_after_sequential.json`
+  - `python scripts/validate_subtitles.py --asr-dir /private/tmp/asmr_qc_apply_fixture/asr --zh-dir /private/tmp/asmr_qc_apply_fixture/zh --json-out /private/tmp/asmr_qc_apply_fixture/validate_after_apply.json`
+  - `python scripts/update_learning_library.py generated_subtitles/RJ01533156 --out /private/tmp/learning_update_rj01533156.md`
+  - `python scripts/update_learning_library.py generated_subtitles/RJ01533156 --append-project-lesson --project-lessons /private/tmp/project-lessons-test.md --out /private/tmp/learning_update_append_test.md`
   - Created a temporary QC refinement project under `/private/tmp/asmr_qc_refinement_project`.
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_qc_refinement_project --focus '语气太硬，想更自然亲密'`
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_qc_refinement_project --focus '称呼不稳定'`
-  - `python tools/manage_qc_refinement.py summary /private/tmp/asmr_qc_refinement_project/qc_refinement/round_01/manifest.json`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_qc_refinement_project --focus '语气太硬，想更自然亲密'`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_qc_refinement_project --focus '称呼不稳定'`
+  - `python scripts/manage_qc_refinement.py summary /private/tmp/asmr_qc_refinement_project/qc_refinement/round_01/manifest.json`
   - `git diff --check`
 - Validation results:
   - Syntax checks passed.
@@ -473,28 +473,28 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: make optional QC refinement a Skill feature before formal packaging.
 - Completed:
-  - Extended `tools/manage_qc_refinement.py start` with `--mode auto`, `--mode guided`, and `--user-guidance`.
+  - Extended `scripts/manage_qc_refinement.py start` with `--mode auto`, `--mode guided`, and `--user-guidance`.
   - Added automatic `context_profile.md` generation for each refinement round.
   - Recorded `mode`, `focus`, `user_guidance`, and `context_profile` in the round manifest.
   - Updated generated `next_steps.md` to pass `context_profile.md` into model QC.
-  - Added `--context-file` to `tools/qc_srt_omlx.py`.
+  - Added `--context-file` to `scripts/qc_srt_omlx.py`.
   - Updated `SKILL.md` and both workflow docs so optional refinement can run as auto contextual QC or guided user-directed QC.
 - Modified files:
-  - `tools/manage_qc_refinement.py`
-  - `tools/qc_srt_omlx.py`
+  - `scripts/manage_qc_refinement.py`
+  - `scripts/qc_srt_omlx.py`
   - `SKILL.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/manage_qc_refinement.py tools/qc_srt_omlx.py`
+  - `python -B -m py_compile scripts/manage_qc_refinement.py scripts/qc_srt_omlx.py`
   - Created a temporary refinement project under `/private/tmp/asmr_qc_modes_project` with matching JA/ZH SRT samples and `project_config.json`.
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode guided --focus '台词精修'`
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode auto --focus '自动情境 QC'`
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode guided --focus '台词精修' --user-guidance '现在有点硬，希望更温柔亲密，但不要改变原意'`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode guided --focus '台词精修'`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode auto --focus '自动情境 QC'`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_qc_modes_project --mode guided --focus '台词精修' --user-guidance '现在有点硬，希望更温柔亲密，但不要改变原意'`
   - Inspected generated `manifest.json`, `context_profile.md`, and `next_steps.md` for the guided round.
-  - `python tools/manage_qc_refinement.py summary /private/tmp/asmr_qc_modes_project/qc_refinement/round_02/manifest.json`
-  - `PYTHONPATH=tools python -B - <<'PY' ... from qc_srt_omlx import read_context ...`
+  - `python scripts/manage_qc_refinement.py summary /private/tmp/asmr_qc_modes_project/qc_refinement/round_02/manifest.json`
+  - `PYTHONPATH=scripts python -B - <<'PY' ... from qc_srt_omlx import read_context ...`
   - `git diff --check`
 - Validation results:
   - Syntax checks passed.
@@ -502,7 +502,7 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Auto mode created `round_01`; guided mode created `round_02`.
   - Guided manifest records `mode`, `focus`, `user_guidance`, and `artifacts.context_profile`.
   - `context_profile.md` includes project metadata, project notes, track names, JA ASR samples, current ZH samples, and guided user instructions.
-  - Generated `next_steps.md` passes `--context-file <round>/context_profile.md` to `tools/qc_srt_omlx.py`.
+  - Generated `next_steps.md` passes `--context-file <round>/context_profile.md` to `scripts/qc_srt_omlx.py`.
   - Summary reports `context_profile.md` as an existing artifact and missing JSON reports as expected before the round is run.
   - `qc_srt_omlx.read_context` combines inline context and context-file text.
   - `git diff --check` passed.
@@ -515,29 +515,29 @@ Do not record private paths, API keys, model secrets, or large command logs here
 
 - Current task: when an RJ ID is recognized, allow the agent to fetch DLsite work metadata for project context.
 - Completed:
-  - Added `tools/fetch_dlsite_work_info.py` to fetch or parse DLsite product metadata for RJ works.
+  - Added `scripts/fetch_dlsite_work_info.py` to fetch or parse DLsite product metadata for RJ works.
   - The fetcher stores title, circle, description, image, published date, keywords, meta tags, and JSON-LD candidates when available.
   - Fetch failures can be written as non-blocking JSON with `--allow-fail`.
-  - `tools/manage_qc_refinement.py` now reads `dlsite_work_info.json` from the project and includes it in `context_profile.md`.
+  - `scripts/manage_qc_refinement.py` now reads `dlsite_work_info.json` from the project and includes it in `context_profile.md`.
   - Updated `SKILL.md`, task routing, and both workflow docs to treat DLsite metadata as low-strength context, not transcript evidence.
 - Modified files:
-  - `tools/fetch_dlsite_work_info.py`
-  - `tools/manage_qc_refinement.py`
+  - `scripts/fetch_dlsite_work_info.py`
+  - `scripts/manage_qc_refinement.py`
   - `SKILL.md`
   - `docs/task_routing.md`
   - `docs/asmr_subtitle_workflow_with_script.md`
   - `docs/asmr_subtitle_workflow_no_script.md`
   - `docs/implementation_log.md`
 - Validation commands:
-  - `python -B -m py_compile tools/fetch_dlsite_work_info.py tools/manage_qc_refinement.py`
+  - `python -B -m py_compile scripts/fetch_dlsite_work_info.py scripts/manage_qc_refinement.py`
   - Created `/private/tmp/dlsite_fixture_RJ123456.html` with title, description, keywords, image metadata, and JSON-LD.
   - Created `/private/tmp/asmr_dlsite_context_project` with a matching `project_config.json`, JA ASR SRT, and ZH SRT.
-  - `python tools/fetch_dlsite_work_info.py RJ123456 --html /private/tmp/dlsite_fixture_RJ123456.html --out /private/tmp/asmr_dlsite_context_project/dlsite_work_info.json`
-  - `python tools/fetch_dlsite_work_info.py /no/rj/here --html /private/tmp/dlsite_fixture_RJ123456.html --out /private/tmp/should_not_exist.json`
-  - `python tools/fetch_dlsite_work_info.py RJ999999 --html /private/tmp/missing_dlsite_fixture.html --out /private/tmp/dlsite_error.json --allow-fail`
-  - `python tools/manage_qc_refinement.py start /private/tmp/asmr_dlsite_context_project --mode auto --focus 'DLsite context test'`
+  - `python scripts/fetch_dlsite_work_info.py RJ123456 --html /private/tmp/dlsite_fixture_RJ123456.html --out /private/tmp/asmr_dlsite_context_project/dlsite_work_info.json`
+  - `python scripts/fetch_dlsite_work_info.py /no/rj/here --html /private/tmp/dlsite_fixture_RJ123456.html --out /private/tmp/should_not_exist.json`
+  - `python scripts/fetch_dlsite_work_info.py RJ999999 --html /private/tmp/missing_dlsite_fixture.html --out /private/tmp/dlsite_error.json --allow-fail`
+  - `python scripts/manage_qc_refinement.py start /private/tmp/asmr_dlsite_context_project --mode auto --focus 'DLsite context test'`
   - Inspected generated `context_profile.md`.
-  - `python tools/manage_qc_refinement.py summary /private/tmp/asmr_dlsite_context_project/qc_refinement/round_01/manifest.json`
+  - `python scripts/manage_qc_refinement.py summary /private/tmp/asmr_dlsite_context_project/qc_refinement/round_01/manifest.json`
   - `git diff --check`
 - Validation results:
   - Syntax checks passed.
@@ -551,3 +551,123 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Live DLsite fetching requires network access and may encounter age-check or regional restrictions; workflow must remain non-blocking.
 - Next:
   - Validate parsing with a local HTML fixture and confirm QC context profile includes saved metadata.
+
+## 2026-06-12 - Scripts Directory Packaging Prep
+
+- Current task: prepare the repo for formal Skill packaging by using `scripts/` instead of `tools/`, cleaning old path references, and skipping forward-test for now.
+- Completed:
+  - Created commit `321a90d Build ASMR translation skill workflow` before packaging-prep changes.
+  - Renamed `tools/` to `scripts/`.
+  - Updated `SKILL.md`, workflow docs, reference docs, and generated command strings to use `scripts/`.
+  - Replaced private Mac absolute paths in workflow examples with relative paths.
+  - Added a packaging boundary note to `SKILL.md`: include `SKILL.md`, `agents/`, `scripts/`, `references/`, `data/`, and linked workflow docs; exclude `generated_subtitles/`, this implementation log, caches, local model files, private configs, and per-work reports.
+- Modified files:
+  - `SKILL.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_translation_corpus.md`
+  - `docs/platform_compatibility.md`
+  - `docs/task_routing.md`
+  - `references/risk-notes.md`
+  - `scripts/`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python /Users/someone_tokki/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+  - `/Users/someone_tokki/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 /Users/someone_tokki/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+  - Manual quick-validate equivalent using Python stdlib frontmatter checks.
+  - `python -m json.tool data/subtitle_risk_patterns.json`
+  - `rg -n "<skill_root>|tools/|PYTHONPATH=.*tools|/Users/someone_tokki/Program/CodeX/Asmr" . --glob '!generated_subtitles/**' --glob '!docs/implementation_log.md' --glob '!.git/**'`
+  - `git diff --check`
+  - `find scripts -name __pycache__ -type d -prune -exec rm -rf {} +`
+- Validation results:
+  - Python syntax checks passed for all `scripts/*.py`.
+  - Official quick validate could not run because the available Python environments do not have `yaml`/PyYAML installed.
+  - Manual equivalent frontmatter validation passed: `SKILL.md` has valid frontmatter, allowed keys, hyphen-case name, and valid description length/content.
+  - `data/subtitle_risk_patterns.json` is valid JSON.
+  - No stale `tools/`, `<skill_root>`, private Mac absolute path, or `PYTHONPATH` references remain outside this implementation log.
+  - `git diff --check` passed.
+  - `scripts/__pycache__` was removed after compile checks.
+- Open questions:
+  - Forward-test is intentionally skipped until the user provides a fresh ASMR work.
+- Next:
+  - Run syntax/package validation and check for stale `tools/` or private absolute path references.
+
+## 2026-06-12 - Dependency Detection And Controlled Install
+
+- Current task: add dependency monitoring and controlled auto-install support to the Skill package.
+- Completed:
+  - Extended `scripts/check_environment.py` with an installable Python dependency table.
+  - Added detection for `tqdm` and `PyYAML`.
+  - Added `--dry-run-install` to show pip commands without changing the environment.
+  - Added `--install-missing-python` to install missing lightweight Python packages into the active interpreter.
+  - Kept external services/backends out of auto-install: Ollama, oMLX, ASR backends, system packages, and models are still reported as setup actions.
+  - Fixed script self-checks to look in `scripts/` instead of the old `tools/` directory.
+  - Added `scripts/requirements.txt`.
+  - Updated `SKILL.md`, `docs/platform_compatibility.md`, and both workflow docs with the new dependency behavior.
+- Modified files:
+  - `scripts/check_environment.py`
+  - `scripts/requirements.txt`
+  - `SKILL.md`
+  - `docs/platform_compatibility.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `python -m json.tool data/subtitle_risk_patterns.json`
+  - `rg -n "<skill_root>|tools/|PYTHONPATH=.*tools|/Users/someone_tokki/Program/CodeX/Asmr" . --glob '!generated_subtitles/**' --glob '!docs/implementation_log.md' --glob '!.git/**'`
+  - `git diff --check`
+  - `find scripts -name __pycache__ -type d -prune -exec rm -rf {} +`
+- Validation results:
+  - Syntax checks passed for all scripts.
+  - Dry-run install reports missing `PyYAML` and shows the pip command without installing it.
+  - Script self-check now finds required files under `scripts/`.
+  - Risk-pattern JSON validation passed.
+  - Stale reference scan found no old `tools/`, `<skill_root>`, private Mac absolute path, or stale `PYTHONPATH` references outside this log.
+  - `git diff --check` passed.
+  - No `__pycache__` directories remain.
+- Open questions:
+  - Actual package installation was not run in this turn; use `--install-missing-python` when dependency changes are allowed in the target environment.
+- Next:
+  - Continue packaging-prep validation or commit the `scripts/` migration and dependency-install changes.
+
+## 2026-06-12 - No-SE ASR Source Preference
+
+- Current task: prefer no-SE audio variants for ASR when an ASMR package contains both SE and no-SE versions, while preserving user override.
+- Completed:
+  - Added `scripts/select_asr_audio_source.py` to scan audio folders/files and classify likely no-SE, with-SE, and unknown audio variants.
+  - Added `--user-selected` so an explicit user-chosen version overrides the default no-SE preference.
+  - Added the new script to `scripts/check_environment.py` required-script checks.
+  - Updated `SKILL.md`, `docs/task_routing.md`, and both workflow docs to say no-SE is the default ASR preference, not a hard rule.
+  - Workflow docs now generate `audio_source_report.json` and set `ASR_AUDIO_DIR` from the selected/recommended source.
+- Modified files:
+  - `scripts/select_asr_audio_source.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/select_asr_audio_source.py scripts/check_environment.py`
+  - Created `/private/tmp/asmr_audio_select_fixture` with `音声_SEあり`, `音声_無SE`, and `bonus_no_se` sample audio filenames.
+  - `python scripts/select_asr_audio_source.py /private/tmp/asmr_audio_select_fixture --json-out /private/tmp/asmr_audio_select_fixture/report.json`
+  - `python scripts/select_asr_audio_source.py /private/tmp/asmr_audio_select_fixture --user-selected /private/tmp/asmr_audio_select_fixture/音声_SEあり --json-out /private/tmp/asmr_audio_select_fixture/report_override.json`
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `rg -n "无 SE|无SE|無SE|SEなし|select_asr_audio_source|user-selected|ASR 音源|audio_source" SKILL.md docs scripts references --glob '*.md' --glob '*.py'`
+  - `git diff --check`
+  - `find scripts -name __pycache__ -type d -prune -exec rm -rf {} +`
+- Validation results:
+  - Syntax checks passed.
+  - Default scan detected no-SE files and returned `decision=prefer_no_se`.
+  - User override scan returned `decision=user_override`, confirming user choice beats no-SE preference.
+  - Environment check now finds `scripts/select_asr_audio_source.py`.
+  - `git diff --check` passed.
+  - No `__pycache__` directories remain.
+- Open questions:
+  - The detector is filename/path based. If a package labels no-SE unusually, the agent should use user/file context and may pass `--user-selected`.
+- Next:
+  - Continue packaging-prep validation or commit the current packaging changes.

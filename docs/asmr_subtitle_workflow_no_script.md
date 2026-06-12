@@ -14,7 +14,7 @@
 - 长时间 ASR/翻译任务应使用脚本侧进度条；正常推进时少打扰用户，只有报错、需要决策或阶段完成时再单独说明。
 - 模型质检是必经步骤，不是可选项。无台本项目尤其容易出现“单句看似通顺、整段逻辑跑偏”的错译，必须用模型对照日文 ASR 和中文字幕做一轮候选问题扫描。
 
-如果使用第三方平台或本地推理服务，比如 Ollama、oMLX、LM Studio 或类似工具，优先走它们官方提供的调用接口。若该平台提供的是 OpenAI-compatible API，就优先直接调用这套接口，而不是通过间接包装、非官方桥接或界面自动化去调用。Windows/WSL 默认优先 Ollama；没有 Ollama 时，agent 应按环境检测结果回退到其他可用 OpenAI-compatible 后端。端口也优先采用平台官方默认端口；只有在默认端口被占用、服务不可用或平台明确要求时，才改用其他端口。这样更容易观察模型运行状态，也更方便看端口、请求和日志，出了问题时能更快判断是模型、服务还是脚本本身。跨平台规则见 [platform_compatibility.md](/Users/someone_tokki/Program/CodeX/Asmr/docs/platform_compatibility.md)。
+如果使用第三方平台或本地推理服务，比如 Ollama、oMLX、LM Studio 或类似工具，优先走它们官方提供的调用接口。若该平台提供的是 OpenAI-compatible API，就优先直接调用这套接口，而不是通过间接包装、非官方桥接或界面自动化去调用。Windows/WSL 默认优先 Ollama；没有 Ollama 时，agent 应按环境检测结果回退到其他可用 OpenAI-compatible 后端。端口也优先采用平台官方默认端口；只有在默认端口被占用、服务不可用或平台明确要求时，才改用其他端口。这样更容易观察模型运行状态，也更方便看端口、请求和日志，出了问题时能更快判断是模型、服务还是脚本本身。跨平台规则见 [platform_compatibility.md](platform_compatibility.md)。
 
 ## 推荐输出结构
 
@@ -51,12 +51,21 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    - 如果目录名或用户输入中识别到 RJ 号，且允许联网，可抓取 DLsite 商品页元信息：
 
    ```bash
-   python tools/fetch_dlsite_work_info.py "RJxxxx" \
+   python scripts/fetch_dlsite_work_info.py "RJxxxx" \
      --out "generated_subtitles/<work_id>/dlsite_work_info.json" \
      --allow-fail
    ```
 
    抓取失败不阻塞流程；成功时，标题、社团、标签和简介只作为低强度上下文。
+
+   如果音频包里可能同时有有 SE/无 SE 版本，先做 ASR 音源选择扫描：
+
+   ```bash
+   python scripts/select_asr_audio_source.py "/path/to/audio_root" \
+     --json-out "generated_subtitles/<work_id>/audio_source_report.json"
+   ```
+
+   默认优先使用扫描报告推荐的无 SE 音频跑 ASR，因为背景声和效果音更少，日语耳语识别通常更准。但这只是默认偏好；如果用户明确指定使用有 SE、通常版或某个目录/文件，就按用户指定，并可用 `--user-selected "/path/to/user_choice"` 记录该覆盖选择。
 
 2. 读取语料库
 
@@ -70,7 +79,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    开工后尽早创建或更新 `generated_subtitles/<work_id>/project_config.json`。配置只记录当前项目的目录、模型、输出格式和报告路径，不自动驱动流程；agent 和分阶段工具会读取它作为复现记录。
 
    ```bash
-   python tools/manage_project_config.py init "generated_subtitles/<work_id>" \
+   python scripts/manage_project_config.py init "generated_subtitles/<work_id>" \
      --work-id "<work_id>" \
      --project-type no-script \
      --asr-dir "generated_subtitles/<work_id>/<asr_dir>" \
@@ -87,22 +96,34 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    可随时查看配置摘要：
 
    ```bash
-   python tools/manage_project_config.py show "generated_subtitles/<work_id>"
+   python scripts/manage_project_config.py show "generated_subtitles/<work_id>"
    ```
 
-   随后跑一次只读环境检测，确认脚本、Python 依赖、项目路径、ASR/翻译后端、外部命令和本地翻译 API 状态。API 服务尚未启动时通常只会得到 warning；已有 `.ja.asr.srt` 时，本地 ASR 后端缺失通常不应阻塞翻译/QC/校验；如果本轮需要新跑 ASR，加 `--require-asr` 做更严格检查。
+   随后跑一次环境检测，确认脚本、Python 依赖、项目路径、ASR/翻译后端、外部命令和本地翻译 API 状态。默认只报告；如果缺轻量 Python 包，可先 dry-run，再在用户允许时自动安装。API 服务尚未启动时通常只会得到 warning；已有 `.ja.asr.srt` 时，本地 ASR 后端缺失通常不应阻塞翻译/QC/校验；如果本轮需要新跑 ASR，加 `--require-asr` 做更严格检查。
 
    ```bash
-   python tools/check_environment.py \
+   python scripts/check_environment.py \
      --config "generated_subtitles/<work_id>/project_config.json" \
      --json-out "generated_subtitles/<work_id>/env_report.json"
+   ```
+
+   如报告缺少 `tqdm`、`PyYAML` 等轻量 Python 包，可先预览安装命令：
+
+   ```bash
+   python scripts/check_environment.py --dry-run-install --skip-api
+   ```
+
+   用户允许修改当前 Python 环境时再安装：
+
+   ```bash
+   python scripts/check_environment.py --install-missing-python --skip-api
    ```
 
 4. 使用高质量 ASR
 
    若 `project_config.json` 指向的 ASR 目录已经有可用的 `*.ja.asr.srt`，且结构校验通过，可以跳过本步骤，直接进入 ASR 自检或翻译。只有需要新跑 ASR 时，才必须确认当前 ASR 后端可用。
 
-   无台本时优先使用当前机器上“识别日语耳语最好”的 ASR。`mlx-community/whisper-large-v3-mlx-4bit` 只是本次可用示例，不是固定要求。如果音频很难、耳语很多、BGM 大，可考虑：
+   无台本时优先使用当前机器上“识别日语耳语最好”的 ASR。若有无 SE 版本且用户没有指定别的版本，优先用无 SE 版本作为 ASR 输入；最终字幕目录仍按目标音频目录命名。`mlx-community/whisper-large-v3-mlx-4bit` 只是本次可用示例，不是固定要求。如果音频很难、耳语很多、BGM 大，可考虑：
 
    - 保留 `language=ja`
    - 关闭 `condition_on_previous_text`
@@ -113,15 +134,15 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    export ASR_MODEL="/path/or/hf_repo/of/current_asr_model"
-   export ASR_DIR="/Users/someone_tokki/Program/CodeX/Asmr/generated_subtitles/<work_id>/asr_current"
+   export ASR_AUDIO_DIR="/path/to/asr_audio_dir"
+   export ASR_DIR="generated_subtitles/<work_id>/asr_current"
    ```
 
    批量命令：
 
    ```bash
-   PYTHONPATH=/Users/someone_tokki/Program/CodeX/Asmr/.codex_deps/asmr_subs \
-   python3 /Users/someone_tokki/Program/CodeX/Asmr/tools/batch_transcribe_mlx.py \
-     --audio-dir "/path/to/audio_dir" \
+   python scripts/batch_transcribe_mlx.py \
+     --audio-dir "$ASR_AUDIO_DIR" \
      --out-dir "$ASR_DIR" \
      --model "$ASR_MODEL" \
      --glob "*.wav" \
@@ -161,13 +182,12 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    export TRANSLATE_BASE_URL="http://127.0.0.1:8000/v1"
    export TRANSLATE_MODEL="current-good-omlx-model"
    export TRANSLATE_API_KEY="local-placeholder"
-   export ZH_SRT_DIR="/Users/someone_tokki/Program/CodeX/Asmr/generated_subtitles/<work_id>/srt_work"
-   export ZH_DIR="/Users/someone_tokki/Program/CodeX/Asmr/generated_subtitles/<work_id>/<原音频文件夹名>"
+   export ZH_SRT_DIR="generated_subtitles/<work_id>/srt_work"
+   export ZH_DIR="generated_subtitles/<work_id>/<原音频文件夹名>"
    ```
 
    ```bash
-   PYTHONPATH=/Users/someone_tokki/Program/CodeX/Asmr/.codex_deps/asmr_subs \
-   python3 /Users/someone_tokki/Program/CodeX/Asmr/tools/batch_translate_srt_omlx.py \
+   python scripts/batch_translate_srt_omlx.py \
      --input-dir "$ASR_DIR" \
      --output-dir "$ZH_SRT_DIR" \
      --api-key "$TRANSLATE_API_KEY" \
@@ -184,8 +204,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    `batch_translate_srt_omlx.py` 会自动调用 `translate_srt_omlx.py --progress-position 1`，把当前文件进度放到第二行。平时使用上面的批量命令即可。若只想单独翻译或调试一个文件，可以直接调用单文件脚本：
 
    ```bash
-   PYTHONPATH=/Users/someone_tokki/Program/CodeX/Asmr/.codex_deps/asmr_subs \
-   python3 /Users/someone_tokki/Program/CodeX/Asmr/tools/translate_srt_omlx.py \
+   python scripts/translate_srt_omlx.py \
      "$ASR_DIR/<file>.ja.asr.srt" \
      "$ZH_SRT_DIR/<file>.zh.srt" \
      --api-key "$TRANSLATE_API_KEY" \
@@ -206,7 +225,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    推荐使用正式校验脚本：
 
    ```bash
-   python tools/validate_subtitles.py \
+   python scripts/validate_subtitles.py \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
      --json-out "generated_subtitles/<work_id>/validate_report.json"
@@ -215,7 +234,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    结构校验通过后，做一次 ASMR 可读性检查。该检查只输出 warning，不自动拆字幕、不改时间轴：
 
    ```bash
-   python tools/subtitle_readability.py \
+   python scripts/subtitle_readability.py \
      "$ZH_SRT_DIR" \
      --max-cps 10 \
      --json-out "generated_subtitles/<work_id>/readability_report.json"
@@ -226,7 +245,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    先扫高风险词：
 
    ```bash
-   python tools/scan_subtitle_risks.py \
+   python scripts/scan_subtitle_risks.py \
      "generated_subtitles/<work_id>" \
      --json-out "generated_subtitles/<work_id>/risk_report.json"
    ```
@@ -253,11 +272,10 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    推荐使用脚本：
 
    ```bash
-   PYTHONPATH=/Users/someone_tokki/Program/CodeX/Asmr/.codex_deps/asmr_subs:/Users/someone_tokki/Program/CodeX/Asmr/tools \
-   python3 /Users/someone_tokki/Program/CodeX/Asmr/tools/qc_srt_omlx.py \
+   python scripts/qc_srt_omlx.py \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
-     --out "/Users/someone_tokki/Program/CodeX/Asmr/generated_subtitles/<work_id>/qc_report.json" \
+     --out "generated_subtitles/<work_id>/qc_report.json" \
      --api-key "$TRANSLATE_API_KEY" \
      --base-url "$TRANSLATE_BASE_URL" \
      --model "$TRANSLATE_MODEL" \
@@ -288,7 +306,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    需要人工介入时，可生成 QC 审阅模板：
 
    ```bash
-   python tools/review_qc_report.py \
+   python scripts/review_qc_report.py \
      "generated_subtitles/<work_id>/qc_report.json" \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
@@ -301,7 +319,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    如果第一轮强制 QC 和修正后，用户仍觉得台词不满意，把后续处理作为“追加 QC 精修功能”，而不是重做基础流程。每一轮都要有独立目录，避免覆盖第一次 `qc_report.json`：
 
    ```bash
-   python tools/manage_qc_refinement.py start \
+   python scripts/manage_qc_refinement.py start \
      "generated_subtitles/<work_id>" \
      --mode auto \
      --focus "用户指出的问题类型，例如语气太硬、亲密感不足、某角色称呼不稳"
@@ -310,7 +328,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    如果用户提供了引导词、风格说明或指出具体翻译问题，使用 guided 模式：
 
    ```bash
-   python tools/manage_qc_refinement.py start \
+   python scripts/manage_qc_refinement.py start \
      "generated_subtitles/<work_id>" \
      --mode guided \
      --focus "台词精修" \
@@ -322,14 +340,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    若 agent 已经按证据确认一批明确问题，可直接编辑 `qc_review_items.json`：把明确应修的条目标为 `"decision": "accept"`，必要时把最终译文写入 `"replacement"`；误报标为 `reject`，无法判断标为 `defer`。随后先 dry-run，再正式应用：
 
    ```bash
-   python tools/apply_qc_decisions.py \
+   python scripts/apply_qc_decisions.py \
      "generated_subtitles/<work_id>/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
      --json-out "generated_subtitles/<work_id>/qc_apply_report.json"
    ```
 
    ```bash
-   python tools/apply_qc_decisions.py \
+   python scripts/apply_qc_decisions.py \
      "generated_subtitles/<work_id>/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
      --apply \
@@ -361,8 +379,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    结构校验、可读性检查、人工修订、模型质检和必要抽听都通过后，按用户选择导出最终字幕。默认把 SRT 中间稿导出为 WebVTT `.zh.vtt`；如果用户要求 `srt`，可直接交付 `.zh.srt`；如果用户要求 `both`，同时交付 `.zh.srt` 和 `.zh.vtt`。
 
    ```bash
-   PYTHONPATH=/Users/someone_tokki/Program/CodeX/Asmr/.codex_deps/asmr_subs \
-   python3 /Users/someone_tokki/Program/CodeX/Asmr/tools/convert_srt_to_vtt.py \
+   python scripts/convert_srt_to_vtt.py \
      "$ZH_SRT_DIR" \
      "$ZH_DIR" \
      --glob "*.zh.srt" \
@@ -394,7 +411,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    可先生成学习库更新草稿：
 
    ```bash
-   python tools/update_learning_library.py \
+   python scripts/update_learning_library.py \
      "generated_subtitles/<work_id>" \
      --out "generated_subtitles/<work_id>/learning_update.md"
    ```
@@ -402,7 +419,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    确认内容后，可追加项目经验骨架，再把可复用内容手动同步到对应 reference：
 
    ```bash
-   python tools/update_learning_library.py \
+   python scripts/update_learning_library.py \
      "generated_subtitles/<work_id>" \
      --append-project-lesson
    ```

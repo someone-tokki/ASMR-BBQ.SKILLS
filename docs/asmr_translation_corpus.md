@@ -12,7 +12,7 @@
 - 风险扫描、QC 修正或处理 `qc_report.json` 前：读 `references/risk-notes.md`，必要时再读 `references/terms.md`。这里的风险说明主要是易错词、ASR 误识别、常见误译和误报边界。
 - 查看过往作品经验：读 `references/project-lessons.md`。
 - 不确定条目和后续验证：读 `references/pending.md`。
-- 机械扫描规则：使用 `data/subtitle_risk_patterns.json`，由 `tools/scan_subtitle_risks.py` 默认读取。
+- 机械扫描规则：使用 `data/subtitle_risk_patterns.json`，由 `scripts/scan_subtitle_risks.py` 默认读取。
 
 ## 使用规则
 

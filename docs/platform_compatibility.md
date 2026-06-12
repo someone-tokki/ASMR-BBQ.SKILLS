@@ -38,7 +38,7 @@ This project should keep subtitle checks, config records, and reports portable a
 Run:
 
 ```bash
-python tools/check_environment.py \
+python scripts/check_environment.py \
   --config "generated_subtitles/<work_id>/project_config.json" \
   --json-out "generated_subtitles/<work_id>/env_report.json"
 ```
@@ -49,7 +49,19 @@ The report should be read as:
 - `WARN`: useful tool or preferred backend is missing, but a fallback route may still work.
 - `OK`: detected and ready for the checked route.
 
-`check_environment.py` is read-only. It recommends backend selection but does not install packages, start Ollama, start oMLX, or download models.
+By default, `check_environment.py` is read-only. To preview missing lightweight Python packages, run:
+
+```bash
+python scripts/check_environment.py --dry-run-install --skip-api
+```
+
+When dependency changes are allowed, it can install missing Python packages into the active interpreter:
+
+```bash
+python scripts/check_environment.py --install-missing-python --skip-api
+```
+
+It still must not silently install Ollama, oMLX, ASR backends, system packages, or models, and it must not start services. Report those as user/agent setup actions.
 
 ## Future One-Key Runner Behavior
 

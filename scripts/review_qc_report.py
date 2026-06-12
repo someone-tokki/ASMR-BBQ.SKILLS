@@ -105,7 +105,7 @@ def render_markdown(items: list[ReviewItem], qc_path: Path) -> str:
         "- Decisions: leave exactly one of accept/reject/defer checked when reviewing.",
         "- Apply no change until the accepted items have been checked against neighboring subtitles and source context.",
         "- JSON workflow: set decision to accept/reject/defer; optionally set replacement when the suggestion needs editing before applying.",
-        "- Apply accepted JSON decisions with tools/apply_qc_decisions.py, then rerun validation, risk scan, and readability checks.",
+        "- Apply accepted JSON decisions with scripts/apply_qc_decisions.py, then rerun validation, risk scan, and readability checks.",
         "",
     ]
 
