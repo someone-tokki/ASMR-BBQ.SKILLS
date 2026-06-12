@@ -272,6 +272,7 @@ def render_next_steps(manifest: dict[str, Any]) -> str:
             f"  --base-url {shell_quote(models['base_url'])} \\",
             f"  --model {shell_quote(models['qc_model'])} \\",
             f"  --chunk-size {models['qc_chunk_size']} \\",
+            "  --chunk-mode dynamic \\",
             f"  --context {shell_quote(context)} \\",
             f"  --context-file {shell_quote(artifacts['context_profile'])}",
             "```",

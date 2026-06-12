@@ -102,6 +102,8 @@ If the route decision is `run_local_platform_asr_api` or `run_local_asr_api`, ru
 
 ASR dependency rule: `--install-missing-python` is only for lightweight workflow packages such as `tqdm` and `PyYAML`. Use `setup_whisper_backend.py` for Python Whisper package/model setup. Do not use ad hoc pip/model-download commands for ASR backends outside the packaged setup route.
 
+ASR resume rule: ASR scripts resume by default at the audio-file level. They skip an audio file when a parseable `<track>.ja.asr.srt` already exists, rebuild SRT from `<track>.ja.asr.json` when possible, and write/update `$ASR_DIR/asr_manifest.json` after each skip, success, or error. Use `--force` only when the user wants to regenerate an already completed ASR file; use `--no-resume` only when debugging checkpoint behavior.
+
 Stage/model switching rule: ASR, translation, and QC run serially. At the start of each stage, confirm `backend`, `base_url`, `model`, and `interface`. ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR. Before moving stages, confirm the previous job finished, output files are written, and the next API/model is reachable; release or switch loaded models if the local platform requires it.
 
 ## Translation Flow
@@ -142,6 +144,8 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 ## QC Policy
 
 - A first model QC pass after translation is mandatory.
+- QC runs with chunk-level resume by default. `scripts/qc_srt_omlx.py` stores successful chunk outputs under `<qc_report_stem>_chunks/` and records a manifest there, so interrupted QC runs should resume instead of repeating completed chunks.
+- QC chunking defaults to `--chunk-mode dynamic`: the script shrinks chunks around long, high-risk, or dense ASMR content and can let simple short dialogue run larger. Use `--chunk-mode fixed` only for debugging or exact reproducibility.
 - The agent must correct all clear issues from `qc_report.json`, then rerun structure validation, risk scan, and readability checks.
 - If the user is still dissatisfied after the mandatory QC pass, treat additional correction as an optional QC refinement feature, not as the baseline QC step.
 - Start each optional refinement round with `scripts/manage_qc_refinement.py start`, using `--mode auto` for model-led contextual QC or `--mode guided --user-guidance "..."` when the user provides style notes, issue descriptions, or desired direction.

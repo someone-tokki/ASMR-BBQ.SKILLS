@@ -26,6 +26,7 @@ ASR_ENDPOINT_EXISTS_CODES = {400, 401, 403, 405, 415, 422}
 REQUIRED_SCRIPTS = [
     "transcribe_mlx.py",
     "batch_transcribe_mlx.py",
+    "asr_resume.py",
     "transcribe_whisper.py",
     "setup_whisper_backend.py",
     "transcribe_openai_audio.py",

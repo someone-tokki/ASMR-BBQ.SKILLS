@@ -854,3 +854,54 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Installed Skill has still not been refreshed from the workspace copy.
 - Next:
   - If accepted, package/sync the Skill and run an installed-path smoke test.
+
+## 2026-06-13 - ASR And QC Resume Checkpoints
+
+- Current task: add checkpoint/resume behavior to ASR and QC, and make QC chunking dynamic.
+- Completed:
+  - Added `scripts/asr_resume.py` as a shared ASR checkpoint helper for output validation, JSON-to-SRT rebuild, atomic writes, and `asr_manifest.json` updates.
+  - Updated `scripts/transcribe_openai_audio.py`, `scripts/transcribe_whisper.py`, `scripts/transcribe_mlx.py`, and `scripts/batch_transcribe_mlx.py`:
+    - Resume is enabled by default.
+    - Existing parseable `<track>.ja.asr.srt` is skipped.
+    - Existing `<track>.ja.asr.json` can rebuild missing SRT before skipping.
+    - Each skipped/success/error audio updates `asr_manifest.json`.
+    - `--force` reruns complete outputs; `--no-resume` disables checkpoint reuse.
+  - Updated `scripts/qc_srt_omlx.py`:
+    - Added chunk-level cache directory, defaulting to `<qc_report_stem>_chunks/`.
+    - Added manifest with per-file/per-chunk signatures.
+    - Added cached chunk reuse unless `--force` or `--no-resume` is used.
+    - Added `--chunk-mode dynamic` default, plus fixed mode and tunables.
+    - Added `--plan-only` for no-model chunk planning validation.
+  - Updated `scripts/manage_qc_refinement.py` so generated refinement commands use dynamic QC chunking.
+  - Updated `SKILL.md`, both workflow docs, and `docs/task_routing.md` with ASR file-level resume and QC chunk-level/dynamic chunk rules.
+  - Added `asr_resume.py` to `scripts/check_environment.py` required script checks.
+- Modified files:
+  - `SKILL.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/task_routing.md`
+  - `docs/implementation_log.md`
+  - `scripts/asr_resume.py`
+  - `scripts/transcribe_openai_audio.py`
+  - `scripts/transcribe_whisper.py`
+  - `scripts/transcribe_mlx.py`
+  - `scripts/batch_transcribe_mlx.py`
+  - `scripts/qc_srt_omlx.py`
+  - `scripts/manage_qc_refinement.py`
+  - `scripts/check_environment.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+  - `python scripts/qc_srt_omlx.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声 --out /private/tmp/qc_plan_report.json --api-key local-placeholder --base-url http://127.0.0.1:8000/v1 --model qwen3.6-27b --chunk-size 6 --min-chunk-size 2 --max-chunk-size 8 --target-chars 220 --hard-chars 360 --chunk-mode dynamic --plan-only`
+  - `python scripts/transcribe_openai_audio.py /private/tmp/asr_resume_fixture/track01.wav --out-dir /private/tmp/asr_resume_fixture/out --base-url http://127.0.0.1:9/v1 --model large-v3 --api-key local-placeholder`
+  - `python -m json.tool /private/tmp/qc_plan_report_chunks/manifest.json`
+  - `python -m json.tool /private/tmp/asr_resume_fixture/out/asr_manifest.json`
+- Validation results:
+  - Syntax checks passed.
+  - `git diff --check` passed.
+  - QC `--plan-only` generated a dynamic chunk manifest without model/API calls.
+  - ASR resume rebuilt `track01.ja.asr.srt` from an existing JSON result and skipped the fake unreachable API, recording `status=skipped` and `message=rebuilt_srt_from_json` in `asr_manifest.json`.
+- Open questions:
+  - This development repo is updated, but the installed Skill package has not been refreshed yet for this change.
+- Next:
+  - If accepted, package/sync the Skill and optionally commit this checkpoint change.

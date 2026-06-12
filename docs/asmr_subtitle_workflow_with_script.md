@@ -213,6 +213,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    如果用户明确选择 `mlx_whisper` 且当前环境已可 import，才使用 `transcribe_mlx.py` 或 `batch_transcribe_mlx.py`。如果用户选择外部 ASR 命令或服务，按用户提供的调用方式执行，但最终仍必须产出同名 `.ja.asr.srt` 到 `$ASR_DIR`。
 
+   ASR 脚本默认按音频文件断点续跑：已有可解析的 `<track>.ja.asr.srt` 会跳过；只有 `.ja.asr.json` 时会优先重建 SRT；每个跳过、成功或失败都会写入 `$ASR_DIR/asr_manifest.json`。只有用户明确要求重跑已完成 ASR 时才加 `--force`。
+
 5. 台本对照
 
    - 若台本是 PDF，先抽取文本。
@@ -374,8 +376,11 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --base-url "$TRANSLATE_BASE_URL" \
      --model "$TRANSLATE_MODEL" \
      --chunk-size 18 \
+     --chunk-mode dynamic \
      --context "作品主题、角色关系、台本关键词、已知 ASR 易错词"
    ```
+
+   QC 默认会在 `$PROJECT_ROOT/qc_report_chunks/` 保存每个 chunk 的结果和 manifest，中断后再次运行会跳过签名一致的成功 chunk。动态 chunk 会自动缩小高风险、长句或密集 ASMR 内容附近的范围；需要完全固定切分时再使用 `--chunk-mode fixed`。
 
    处理原则：
 
