@@ -5,9 +5,13 @@
 ## 分流原则
 
 - 先盘点输入：音频、官方台本/初稿/PDF/TXT/HTML、已有 `.ja.asr.srt`、已有 `.zh.srt`/`.zh.vtt`、促销/试听目录、用户要求的输出格式。
+- 开工第一步必须用 `scripts/resolve_project_context.py` 从源路径和父目录解析 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR` 与 `FINAL_SUBTITLE_DIR`。源文件夹名是 `RJxxxx` 时必须识别为作品号。
+- `PROJECT_ROOT` 默认就是源 ASMR 作品目录，即识别到的 RJ 父目录或音频源上级作品目录；不再默认创建 `generated_subtitles/<WORK_ID>`。除非用户明确指定 `--output-root` 或 `--project-root`，不要把项目输出另放到工作区。
+- 工作产物放在 `$PROJECT_ROOT` 下的专用子目录/文件；最终 `.zh.vtt/.zh.srt` 放在 `$FINAL_SUBTITLE_DIR`，默认是 `$PROJECT_ROOT/subtitles/`。
 - 若音频包里同时存在有 SE/无 SE 版本，默认优先用无 SE 版本跑 ASR；如果用户明确指定要用其他版本，则用户指定优先。
 - 默认最终输出为 `.zh.vtt`；用户可明确选择 `srt` 或 `both`。`.zh.srt` 默认仍是工作中间稿。
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
+- 新跑 ASR 前必须先用 `scripts/resolve_asr_route.py` 做只读分流；`asr_backend=auto` 默认先探测本地平台 API 端口是否支持 `/audio/transcriptions`，再探测配置的 `local-asr-api`，再使用 skill 自带 Python Whisper 脚本。若本机没有 `whisper`，最后才使用 `scripts/setup_whisper_backend.py` 这条受控 setup 路线安装 `openai-whisper` 并下载/缓存模型，不允许 agent 临时拼 pip 命令、下载未知模型或猜测本地二进制入口。
 - 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查或格式转换。
 
 ## 路线表
@@ -19,24 +23,30 @@
 | 已有 `.ja.asr.srt`，还没有中文字幕 | 复用 ASR 翻译路线 | 先校验 JA ASR 结构；环境检测不加 `--require-asr` | 按是否有台本选择 workflow | 与完整流程相同，但可跳过新 ASR |
 | 已有 `.zh.srt` 工作稿 | QC/修正路线 | 成对校验 JA ASR 与 ZH SRT；跑风险、可读性和 QC | 对应 workflow、`references/risk-notes.md` | 修正明确 QC 问题后重跑结构、风险、可读性 |
 | 已有最终 `.zh.vtt` 或 `.zh.srt` | 复查/再交付路线 | 找到对应工作稿；若没有工作稿，先决定是否从最终文件回建检查输入 | `references/style.md`、`references/risk-notes.md` | 至少风险和可读性；能成对时跑结构和 QC |
-| 只要求 SRT/VTT 转换 | 格式转换路线 | 确认源字幕结构 OK，再按 `output_format` 导出 | `docs/task_routing.md`、必要时 workflow 导出段 | `validate_subtitles.py --final-dir` 或源目录结构检查；确认成品目录无中间产物 |
+| 只要求 SRT/VTT 转换 | 格式转换路线 | 确认源字幕结构 OK，再用 `export_final_subtitles.py` 按 `output_format` 导出 | `docs/task_routing.md`、必要时 workflow 导出段 | `validate_subtitles.py --final-dir` 或源目录结构检查；确认成品目录无中间产物 |
 | 只要求扫描/审阅 | 只读检查路线 | 不修改字幕；生成报告并总结问题 | `references/risk-notes.md`、`references/style.md` | 按请求跑结构、风险、可读性或 QC 审阅模板 |
-| 促销/试听音频存在 | 促销并行子路线 | 为促销建立独立 ASR/SRT 工作目录和同名最终目录 | 对应 workflow 的促销段 | 促销单独结构、风险、可读性、QC，不复用本篇结论 |
+| 促销/试听音频存在 | 促销并行子路线 | 为促销建立独立 ASR/SRT 工作目录，最终字幕同样导出到 `$FINAL_SUBTITLE_DIR` | 对应 workflow 的促销段 | 促销单独结构、风险、可读性、QC，不复用本篇结论 |
 
 ## 开工步骤
 
-1. 识别 `work_id`、源音频目录、促销/试听目录、台本状态、已有 ASR/中文字幕状态和输出格式。
-2. 如果识别到 RJ 号且允许联网，先用 `scripts/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `generated_subtitles/<work_id>/dlsite_work_info.json`。抓取失败不阻塞流程。
-3. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；无 SE 只是默认推荐，用户指定版本时用用户指定。
-4. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
-5. 按路线读取有台本或无台本 workflow。
-6. 创建或更新 `generated_subtitles/<work_id>/project_config.json`。
-7. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
-8. 进入对应 workflow 的执行步骤。
+1. 运行 `scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json`，确定 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR` 和 `SOURCE_AUDIO_DIR`。
+2. 识别源音频目录、促销/试听目录、台本状态、已有 ASR/中文字幕状态和输出格式。
+3. 如果识别到 RJ 号且允许联网，先用 `scripts/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `$PROJECT_ROOT/dlsite_work_info.json`。抓取失败不阻塞流程。
+4. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；无 SE 只是默认推荐，用户指定版本时用用户指定。
+5. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
+6. 按路线读取有台本或无台本 workflow。
+7. 创建或更新 `$PROJECT_ROOT/project_config.json`。
+8. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
+9. 如果本轮必须新跑 ASR，跑 `scripts/resolve_asr_route.py --config "$PROJECT_ROOT/project_config.json" --require-new-asr`。若返回 `blocked`，停下向用户确认 ASR 路线。
+10. 进入对应 workflow 的执行步骤。
 
 ## 模型任务边界
 
-- ASR/转文字任务：只负责从音频生成日文 `.ja.asr.srt`/JSON，不负责最终翻译判断。
+- ASR/转文字任务：只负责从音频生成日文 `.ja.asr.srt`/JSON，不负责最终翻译判断。ASR 必须使用 Whisper 类模型和 `/audio/transcriptions`，或使用 Python Whisper 脚本。
+- ASR 默认顺序：已有 `.ja.asr.srt` 先复用；新跑时优先探测 oMLX/LM Studio/Ollama 等本地平台 API 是否支持 `/audio/transcriptions`；然后使用配置的 `local-asr-api`；然后使用 Python Whisper；最后才走受控 setup。不要把只支持 chat 的翻译/QC 端口当成 ASR 入口。
+- 翻译/QC 默认走 oMLX/Ollama/LM Studio 等本地 OpenAI-compatible chat 接口。本机默认推荐 `qwen3.6-27b`；如果服务里的实际 model id 不同，以 `/models` 或用户配置为准。
+- 阶段切换时必须确认 `backend`、`base_url`、`model`、`interface`：ASR 用 Whisper + `/audio/transcriptions`，翻译/QC 用 chat 模型 + `/chat/completions`。如果本地平台不能同时常驻 ASR 与翻译模型，先释放/卸载/切换模型，再进入下一阶段。
+- 如果已有 `.ja.asr.srt`，优先复用并校验；如果没有且所有 ASR 路线都不可用或用户不允许安装/下载，agent 必须停下询问。
 - 翻译模型任务：负责把日文 ASR 或台本辅助下的日文字幕翻成 `.zh.srt`，必须保持编号和时间轴。
 - QC 模型任务：只产出候选问题和建议，不直接改字幕；第一轮 QC 必跑。
 - Agent 任务：分流、读 reference、调用脚本、证据驱动地修正字幕、复跑检查、更新学习库和交付说明。

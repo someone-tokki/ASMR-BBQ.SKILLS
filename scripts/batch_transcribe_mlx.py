@@ -37,7 +37,14 @@ def main() -> int:
     parser.add_argument("--word-timestamps", action="store_true")
     args = parser.parse_args()
 
-    import mlx_whisper
+    try:
+        import mlx_whisper
+    except ImportError as exc:
+        raise SystemExit(
+            "mlx_whisper is not available. This script is only for the explicitly selected mlx_whisper ASR route; "
+            "do not auto-install ASR packages or download models. Choose an existing .ja.asr.srt, an installed external ASR command/service, "
+            "or explicitly approve mlx_whisper setup."
+        ) from exc
 
     audio_dir = Path(args.audio_dir)
     out_dir = Path(args.out_dir)

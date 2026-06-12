@@ -671,3 +671,186 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - The detector is filename/path based. If a package labels no-SE unusually, the agent should use user/file context and may pass `--user-selected`.
 - Next:
   - Continue packaging-prep validation or commit the current packaging changes.
+
+## 2026-06-12 - Source Folder Project Root Defaults
+
+- Current task: fix installed Skill behavior after user testing so RJ folder names are recognized and outputs no longer default to `generated_subtitles/<work_id>`.
+- Completed:
+  - Added `scripts/resolve_project_context.py` context fields for `SOURCE_PROJECT_DIR` and `FINAL_SUBTITLE_DIR`.
+  - Changed `resolve_project_context.py` so default `PROJECT_ROOT` is the source ASMR work directory resolved from the RJ parent/source path.
+  - Kept `--output-root` and `--project-root` as explicit override paths for users who want alternate output locations.
+  - Set default final subtitle delivery to `$PROJECT_ROOT/subtitles/`.
+  - Updated `SKILL.md`, `docs/task_routing.md`, both workflow docs, `docs/platform_compatibility.md`, and `scripts/select_asr_audio_source.py` to remove the old generated-subtitles default and old audio-folder-name final directory rule.
+  - Added `scripts/export_final_subtitles.py` to export reviewed `.zh.srt` work files to `$FINAL_SUBTITLE_DIR` as `vtt`, `srt`, or `both`.
+  - Updated final export workflow steps to use `export_final_subtitles.py` and then validate `$FINAL_SUBTITLE_DIR`.
+  - Preserved the ASR/translation/QC separation and no-auto-ASR-install guidance.
+- Modified files:
+  - `scripts/resolve_project_context.py`
+  - `scripts/export_final_subtitles.py`
+  - `scripts/select_asr_audio_source.py`
+  - `scripts/check_environment.py`
+  - `scripts/manage_project_config.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/platform_compatibility.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/resolve_project_context.py /private/tmp/asmr_ctx/RJ123456/音声/track01.wav --json`
+  - `python scripts/resolve_project_context.py /private/tmp/asmr_ctx/RJ123456/音声 --output-root /private/tmp/alt_outputs --json`
+  - `python scripts/export_final_subtitles.py /private/tmp/asmr_export_fixture/work /private/tmp/asmr_export_fixture/final --format both --glob '*.zh.srt' --overwrite --json-out /private/tmp/asmr_export_fixture/export_report.json`
+  - `python scripts/validate_subtitles.py --final-dir /private/tmp/asmr_export_fixture/final --json-out /private/tmp/asmr_export_fixture/final_validate.json`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `python -m json.tool data/subtitle_risk_patterns.json`
+  - `rg -n "当前工作区下|工作区的|成品目录必须|音频目录同名|目标音频目录|最终字幕目录仍按|原音频文件夹名|原促销音频文件夹名|pip install mlx|下载模型来补 ASR|Use project_root for generated ASR, SRT work files, QC reports, and final subtitles" SKILL.md docs scripts --glob '!docs/implementation_log.md'`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - A source file under `/private/tmp/asmr_ctx/RJ123456/音声/track01.wav` resolves to `WORK_ID=RJ123456`, `PROJECT_ROOT=/private/tmp/asmr_ctx/RJ123456`, `SOURCE_AUDIO_DIR=/private/tmp/asmr_ctx/RJ123456/音声`, and `FINAL_SUBTITLE_DIR=/private/tmp/asmr_ctx/RJ123456/subtitles`.
+  - Explicit `--output-root /private/tmp/alt_outputs` still resolves `PROJECT_ROOT=/private/tmp/alt_outputs/RJ123456`.
+  - `export_final_subtitles.py --format both` generated both `track01.zh.srt` and `track01.zh.vtt`; final directory validation passed.
+  - Environment dry-run found `export_final_subtitles.py`; status is `WARN` only because no project config was supplied, `PyYAML` is missing, `mlx_whisper` is absent, `ollama` is absent, and API reachability was skipped.
+  - Risk-pattern JSON validation passed.
+  - Stale output-rule scan found no matches.
+  - `git diff --check` passed.
+- Open questions:
+  - Installed Skill still needs to be refreshed from the updated workspace copy before a new Codex conversation can use these changes.
+- Next:
+  - Copy the updated Skill files into the packaged/installed Skill location and rerun a light smoke test from the installed path.
+
+## 2026-06-12 - ASR Route Separation And No Auto Repair
+
+- Current task: fix the remaining installed-Skill behavior where agents confused translation/QC local services with ASR and tried to find/install/download ASR backends.
+- Completed:
+  - Added `scripts/resolve_asr_route.py`, a read-only ASR decision helper.
+  - `resolve_asr_route.py` returns `reuse_existing_asr` when existing `.ja.asr.srt` files are available, returns `blocked` for `asr_backend=auto` when new ASR is required, and only allows `mlx_whisper` when explicitly selected and importable.
+  - Updated `scripts/check_environment.py` so `asr_backend=auto` no longer defaults macOS to `mlx_whisper`; MLX is only selected by explicit `macos-mlx` profile or `--asr-backend mlx_whisper`.
+  - Changed missing `mlx_whisper` under auto route from a repair-looking warning to `OK: Not required for the current ASR route`.
+  - Made `--require-asr` fail when new ASR is required but auto has no selected route, so the agent stops for route selection instead of trying local installs/downloads.
+  - Updated `scripts/transcribe_mlx.py` and `scripts/batch_transcribe_mlx.py` to print an explicit "do not auto-install or download models" message when `mlx_whisper` is missing.
+  - Updated `SKILL.md`, `docs/task_routing.md`, `docs/platform_compatibility.md`, and both workflow docs so new ASR must go through route resolution first.
+  - Moved MLX transcription commands in workflow docs under "explicit mlx_whisper route only" examples.
+- Modified files:
+  - `scripts/resolve_asr_route.py`
+  - `scripts/check_environment.py`
+  - `scripts/transcribe_mlx.py`
+  - `scripts/batch_transcribe_mlx.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/platform_compatibility.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/resolve_asr_route.py --asr-backend auto --require-new-asr --json-out /private/tmp/asr_route_auto_blocked.json; test $? -eq 2`
+  - `python scripts/resolve_asr_route.py --asr-dir /private/tmp/asr_route_existing --asr-backend auto --json-out /private/tmp/asr_route_reuse.json`
+  - `python scripts/resolve_asr_route.py --asr-backend mlx_whisper --require-new-asr --json-out /private/tmp/asr_route_mlx_blocked.json; test $? -eq 2`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `python scripts/check_environment.py --require-asr --dry-run-install --skip-api; test $? -eq 1`
+  - `python scripts/transcribe_mlx.py /private/tmp/nonexistent.wav --out-dir /private/tmp/mlx_test --model dummy; test $? -ne 0`
+  - `python scripts/batch_transcribe_mlx.py --audio-dir /private/tmp --out-dir /private/tmp/mlx_test --model dummy; test $? -ne 0`
+- Validation results:
+  - Syntax checks passed.
+  - Auto + new ASR returns blocked with a clear "do not install/download" reason.
+  - Existing `.ja.asr.srt` files are reused without requiring an ASR backend.
+  - Explicit `mlx_whisper` with missing import returns blocked, not an install attempt.
+  - Environment dry-run reports `platform_default_asr_backend: external` and `mlx_whisper: Not required for the current ASR route`.
+  - Environment check with `--require-asr` fails until the user selects a concrete ASR route.
+  - MLX transcription scripts fail with a clear route-selection message instead of a raw traceback.
+- Open questions:
+  - Installed Skill still needs to be refreshed after all fixes are accepted.
+- Next:
+  - Run final repository checks, then package/install only after user approval.
+
+## 2026-06-12 - Packaged Python Whisper ASR Default
+
+- Current task: correct the ASR default after user clarified that ASR should use the Skill's packaged Python script route, while translation and QC should keep using local OpenAI-compatible services such as oMLX, LM Studio, or Ollama.
+- Completed:
+  - Added `scripts/transcribe_whisper.py` as the default Python openai-whisper transcription script. It writes `<track>.ja.asr.json` and `<track>.ja.asr.srt` and keeps ASR output under the configured ASR work directory.
+  - Added `scripts/setup_whisper_backend.py` as the controlled setup helper for openai-whisper package install and model cache/download. It supports dry-run reporting and must be run only after user approval.
+  - Updated `scripts/resolve_asr_route.py` so `asr_backend=auto` resolves to `run_python_whisper` when Python can import `whisper`, or `setup_python_whisper_required` when setup is needed. `local-asr-api` remains explicit only.
+  - Standardized the default openai-whisper model name to `large-v3`.
+  - Updated `scripts/check_environment.py` so missing `whisper` is a warning for general/no-config checks, but a failure when `--require-asr` means the current run must create new ASR.
+  - Updated `check_environment.py` so `ffmpeg` is required only when Python Whisper will create new ASR; existing ASR projects can continue translation/QC/checks without it.
+  - Verified `SKILL.md`, `docs/task_routing.md`, `docs/platform_compatibility.md`, and both workflow docs describe Python Whisper as the default ASR route and keep translation/QC on local OpenAI-compatible services.
+- Modified files:
+  - `scripts/transcribe_whisper.py`
+  - `scripts/setup_whisper_backend.py`
+  - `scripts/resolve_asr_route.py`
+  - `scripts/transcribe_openai_audio.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/platform_compatibility.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/resolve_asr_route.py --asr-backend auto --require-new-asr --json-out /private/tmp/asr_route_whisper.json`
+  - `python scripts/setup_whisper_backend.py --dry-run --install-package --download-model --model tiny --json-out /private/tmp/whisper_setup_dry_run.json`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `python scripts/check_environment.py --require-asr --dry-run-install --skip-api`
+  - `python scripts/resolve_asr_route.py --asr-backend python-whisper --require-new-asr --json-out /private/tmp/asr_route_python_whisper.json`
+  - `rg -n "whisper-large-v3|local ASR API first|External means|platform_default_asr_backend: external|run_local_asr_api.*auto|默认.*本地.*ASR.*端口|pip install mlx|下载模型来补 ASR" SKILL.md docs scripts --glob '!docs/implementation_log.md'`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - Current Python cannot import `whisper`, so `resolve_asr_route.py --asr-backend auto --require-new-asr` returns exit code `2` with `DECISION=setup_python_whisper_required`, `ASR_BACKEND=python-whisper`, and `ASR_MODEL=large-v3`.
+  - Whisper setup dry-run reported the intended `openai-whisper` install and model cache action without modifying the environment.
+  - General environment dry-run now reports `WARN`, not `FAIL`, for missing `whisper` when no project config is supplied and no new ASR run is required.
+  - Environment check with `--require-asr` fails as intended when `whisper` is missing, directing the agent to the packaged setup route.
+  - Stale-route scan found only the explicit MLX model example `whisper-large-v3-mlx-4bit`, which is not the default route.
+  - `git diff --check` passed.
+- Open questions:
+  - Installed Skill has not been refreshed yet. Do not copy/sync into `/Users/someone_tokki/.codex/skills/asmr-subtitle-translator` until the remaining fixes are accepted.
+- Next:
+  - If accepted, refresh the installed Skill/package and run a smoke test from the installed location in a new Codex conversation.
+
+## 2026-06-12 - ASR Local Platform API First And Stage Model Switching
+
+- Current task: update the ASR strategy so ASR, translation, and QC can all prefer local platform APIs, while keeping ASR on transcription endpoints and translation/QC on chat endpoints.
+- Completed:
+  - Updated `scripts/resolve_asr_route.py` so `asr_backend=auto` now checks routes in this order:
+    1. existing `.ja.asr.srt` reuse,
+    2. local platform API candidates (`127.0.0.1:8000/v1`, `127.0.0.1:1234/v1`, `127.0.0.1:11434/v1`, plus configured translate base URL) only when `/audio/transcriptions` is detected,
+    3. configured `local-asr-api`,
+    4. Python `whisper`,
+    5. controlled `setup_whisper_backend.py`.
+  - Added non-invasive `/audio/transcriptions` probes to `resolve_asr_route.py`; HTTP 400/401/403/405/415/422 count as endpoint-present signals, while connection errors and 404-style unsupported endpoints do not.
+  - Updated explicit `local-asr-api` handling so an unreachable transcription endpoint blocks with `local_asr_api_unreachable` instead of being assumed usable.
+  - Updated `scripts/check_environment.py` to report `local-platform-asr-api` as the auto ASR default, probe local ASR endpoints, and require Python Whisper only when local platform/local ASR API fallback is unavailable.
+  - Updated `SKILL.md`, `docs/task_routing.md`, `docs/platform_compatibility.md`, and both workflow docs to separate stage models/interfaces:
+    - ASR: Whisper-class model, `/audio/transcriptions`, or Python Whisper script.
+    - Translation/QC: chat model, `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available.
+  - Added stage-boundary guidance: confirm backend, base URL, model, and interface before each stage; release/unload/switch models when the local platform cannot keep ASR and chat models resident at the same time.
+- Modified files:
+  - `scripts/resolve_asr_route.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/platform_compatibility.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/resolve_asr_route.py --asr-backend auto --require-new-asr --probe-timeout 0.5 --json-out /private/tmp/asr_route_auto_platform_first.json`
+  - `python scripts/resolve_asr_route.py --asr-backend local-asr-api --asr-base-url http://127.0.0.1:9/v1 --require-new-asr --probe-timeout 0.5 --json-out /private/tmp/asr_route_explicit_bad_api.json`
+  - `python scripts/check_environment.py --require-asr --dry-run-install --skip-api`
+  - `rg -n "Python Whisper route first|Python Whisper first|默认 ASR 路线是 skill 自带|ASR 默认走 Python Whisper|packaged Python Whisper route first|local-asr-api.*only used|current-good-local-model|platform_default_asr_backend: external|Auto uses the packaged Python Whisper route first" SKILL.md docs scripts --glob '!docs/implementation_log.md'`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - Escalated localhost probe found `http://127.0.0.1:8000/v1/audio/transcriptions` responds with HTTP 405, so `resolve_asr_route.py --asr-backend auto --require-new-asr` now returns `DECISION=run_local_platform_asr_api`, `ASR_BACKEND=local-platform-asr-api`, and `ASR_BASE_URL=http://127.0.0.1:8000/v1`.
+  - Explicit bad local ASR API at `http://127.0.0.1:9/v1` returns `DECISION=local_asr_api_unreachable` and exit code `2`.
+  - `check_environment.py --require-asr` now reports ASR as OK via `local-platform-asr-api at http://127.0.0.1:8000/v1`; missing Python `whisper` is only a warning because it is not needed for the current auto route.
+  - Stale wording scan found no old "Python Whisper first" defaults outside the implementation log.
+  - `git diff --check` passed.
+- Open questions:
+  - Installed Skill has still not been refreshed from the workspace copy.
+- Next:
+  - If accepted, package/sync the Skill and run an installed-path smoke test.

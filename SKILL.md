@@ -24,6 +24,8 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
 
 - Preserve subtitle index count, order, start time, and end time unless the user explicitly asks for retiming.
 - Keep `.zh.srt` as the working format. Final output defaults to `.zh.vtt`; honor explicit user requests for `srt` or `both`.
+- Default `PROJECT_ROOT` to the source ASMR work directory resolved from the audio path or RJ parent folder. Do not create a separate `generated_subtitles/<work_id>` tree unless the user explicitly asks for an alternate output root.
+- Keep work artifacts under `PROJECT_ROOT` in named subfolders/files such as `asr_current/`, `srt_work/`, `qc_report.json`, and `project_config.json`. Keep deliverable subtitles under `FINAL_SUBTITLE_DIR`, which defaults to `PROJECT_ROOT/subtitles/`.
 - Use scripts for checks instead of relying on eyeballing.
 - Use `scripts/subtitle_io.py` for local SRT parsing/composition; core workflow scripts should not require the third-party `srt` package.
 - Treat risk scans and QC reports as candidate evidence, not automatic truth.
@@ -35,19 +37,32 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
 
 For a new work:
 
-1. Identify `work_id`, audio directories, script availability, existing `.ja.asr.srt`, existing `.zh.srt`/`.zh.vtt`, promo/trial audio, desired output format, and the route from `docs/task_routing.md`.
-   - If `work_id` contains an RJ ID and network access is available/approved, fetch DLsite metadata with `scripts/fetch_dlsite_work_info.py` and save it as `generated_subtitles/<work_id>/dlsite_work_info.json`.
+1. Resolve project context before creating any output files:
+
+```bash
+python scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json
+```
+
+Use the returned `work_id`, `project_root`, `source_project_dir`, and `final_subtitle_dir` as `WORK_ID`, `PROJECT_ROOT`, `SOURCE_PROJECT_DIR`, and `FINAL_SUBTITLE_DIR`. This script scans file paths and parent folder names for `RJxxxx`; a source folder named `RJxxxx` is enough to identify the work. By default, `PROJECT_ROOT` is the source ASMR work directory and `FINAL_SUBTITLE_DIR` is its `subtitles/` folder. If no RJ exists, use the script's fallback work ID or ask the user.
+
+2. Identify audio directories, script availability, existing `.ja.asr.srt`, existing `.zh.srt`/`.zh.vtt`, promo/trial audio, desired output format, and the route from `docs/task_routing.md`.
+   - If `WORK_ID` contains an RJ ID and network access is available/approved, fetch DLsite metadata with `scripts/fetch_dlsite_work_info.py` and save it as `$PROJECT_ROOT/dlsite_work_info.json`.
    - Treat DLsite title, circle, tags, and description as low-strength context, not as a transcript or proof against ASR/script evidence.
    - Before new ASR, scan audio variants with `scripts/select_asr_audio_source.py`. If a no-SE version is detected, prefer it for ASR because recognition is usually cleaner; if the user explicitly requests another version, use the user-selected version.
-2. Create or update `generated_subtitles/<work_id>/project_config.json` with `scripts/manage_project_config.py`.
-3. Use `--asr-backend auto` unless the user explicitly chooses `mlx_whisper`, `external`, or another ASR backend.
-4. Use `--translate-backend auto` unless the user explicitly chooses `ollama`, `omlx`, or another backend.
-5. Run environment detection before ASR, translation, or QC:
+3. Default translation and QC model calls to an existing local OpenAI-compatible service port:
+   - oMLX/common local server: `http://127.0.0.1:8000/v1`
+   - LM Studio: `http://127.0.0.1:1234/v1`
+   - Ollama: `http://127.0.0.1:11434/v1`
+   On this user's machine, prefer `qwen3.6-27b` for translation and QC when that model is available; otherwise use the best configured local chat model.
+4. Create or update `$PROJECT_ROOT/project_config.json` with `scripts/manage_project_config.py`.
+5. Use `--asr-backend auto` unless the user explicitly chooses `local-asr-api`, `python-whisper`, `mlx_whisper`, `external`, or another ASR backend. In auto mode, new ASR probes local platform API ports for `/audio/transcriptions` first, then configured `local-asr-api`, then the packaged Python Whisper route, then the controlled Python Whisper setup route.
+6. Use `--translate-backend auto` unless the user explicitly chooses `ollama`, `omlx`, `lmstudio`, or another backend.
+7. Run environment detection before ASR, translation, or QC:
 
 ```bash
 python scripts/check_environment.py \
-  --config "generated_subtitles/<work_id>/project_config.json" \
-  --json-out "generated_subtitles/<work_id>/env_report.json"
+  --config "$PROJECT_ROOT/project_config.json" \
+  --json-out "$PROJECT_ROOT/env_report.json"
 ```
 
 If lightweight Python packages are missing, preview the install plan with:
@@ -62,13 +77,38 @@ When the user allows dependency changes, install missing Python packages into th
 python scripts/check_environment.py --install-missing-python --skip-api
 ```
 
-Resolve `FAIL` items before production runs. `WARN` items may be acceptable if the chosen route has a fallback. If `*.ja.asr.srt` files already exist, missing local ASR backends such as `mlx_whisper` should not block translation, QC, or validation. Use `--require-asr` when checking an environment that must run new ASR.
+Resolve `FAIL` items before production runs. `WARN` items may be acceptable if the chosen route has a fallback. If `*.ja.asr.srt` files already exist, missing local ASR backends such as `mlx_whisper` should not block translation, QC, or validation. Use `--require-asr` only when this run must create new ASR.
+
+Before running new ASR, resolve the ASR route:
+
+```bash
+python scripts/resolve_asr_route.py \
+  --config "$PROJECT_ROOT/project_config.json" \
+  --require-new-asr \
+  --json-out "$PROJECT_ROOT/asr_route_report.json"
+```
+
+If this command reports `setup_python_whisper_required`, use the packaged setup script after user approval:
+
+```bash
+python scripts/setup_whisper_backend.py \
+  --install-package \
+  --download-model \
+  --model "$ASR_MODEL" \
+  --json-out "$PROJECT_ROOT/whisper_setup_report.json"
+```
+
+If the route decision is `run_local_platform_asr_api` or `run_local_asr_api`, run `scripts/transcribe_openai_audio.py` against the reported `ASR_BASE_URL`. If the route decision is `run_python_whisper`, run `scripts/transcribe_whisper.py`.
+
+ASR dependency rule: `--install-missing-python` is only for lightweight workflow packages such as `tqdm` and `PyYAML`. Use `setup_whisper_backend.py` for Python Whisper package/model setup. Do not use ad hoc pip/model-download commands for ASR backends outside the packaged setup route.
+
+Stage/model switching rule: ASR, translation, and QC run serially. At the start of each stage, confirm `backend`, `base_url`, `model`, and `interface`. ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR. Before moving stages, confirm the previous job finished, output files are written, and the next API/model is reachable; release or switch loaded models if the local platform requires it.
 
 ## Translation Flow
 
 Use the selected workflow doc for exact commands. The normal sequence is:
 
-1. ASR to Japanese `.ja.asr.srt`, or reuse existing `.ja.asr.srt` files if they already pass structure checks. When multiple audio variants exist, prefer no-SE audio for ASR unless the user chooses another version.
+1. ASR to Japanese `.ja.asr.srt`, or reuse existing `.ja.asr.srt` files if they already pass structure checks. New ASR requires a resolved ASR route from `scripts/resolve_asr_route.py`. When multiple audio variants exist, prefer no-SE audio for ASR unless the user chooses another version.
 2. Structure check against expected SRT shape when files exist.
 3. Translate to Chinese `.zh.srt`.
 4. Run structure validation:
@@ -77,15 +117,15 @@ Use the selected workflow doc for exact commands. The normal sequence is:
 python scripts/validate_subtitles.py \
   --asr-dir "$ASR_DIR" \
   --zh-dir "$ZH_SRT_DIR" \
-  --json-out "generated_subtitles/<work_id>/validate_report.json"
+  --json-out "$PROJECT_ROOT/validate_report.json"
 ```
 
 5. Run high-risk scan:
 
 ```bash
 python scripts/scan_subtitle_risks.py \
-  "generated_subtitles/<work_id>" \
-  --json-out "generated_subtitles/<work_id>/risk_report.json"
+  "$PROJECT_ROOT" \
+  --json-out "$PROJECT_ROOT/risk_report.json"
 ```
 
 6. Run ASMR readability check:
@@ -94,7 +134,7 @@ python scripts/scan_subtitle_risks.py \
 python scripts/subtitle_readability.py \
   "$ZH_SRT_DIR" \
   --max-cps 10 \
-  --json-out "generated_subtitles/<work_id>/readability_report.json"
+  --json-out "$PROJECT_ROOT/readability_report.json"
 ```
 
 Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese chars/second is the default warning threshold; do not over-fragment subtitles just to lower CPS.
@@ -118,6 +158,8 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 
 ## Platform And Backend Rules
 
+- ASR defaults to local platform API probing first: oMLX/LM Studio/Ollama or another configured OpenAI-compatible base URL may be used for ASR only when `/audio/transcriptions` is reachable. If not, try configured `local-asr-api`, then packaged Python Whisper, then controlled setup.
+- Translation and QC default to existing local chat service ports when configured/available, using `qwen3.6-27b` as this user's preferred local model when available.
 - Windows/WSL default to Ollama for translation and QC when available.
 - If Ollama is unavailable and `translate_backend=auto`, fall back to another available OpenAI-compatible backend.
 - If the project explicitly sets `translate_backend=ollama`, missing Ollama is a blocker.
@@ -125,6 +167,10 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 - `check_environment.py` detects Python packages, scripts, external commands, ASR/backend availability, paths, output settings, and local API reachability.
 - By default `check_environment.py` is read-only. With `--install-missing-python`, it may install small Python packages listed in its dependency table, such as `tqdm` and `PyYAML`, into the active interpreter.
 - It must not silently install Ollama/oMLX, ASR backends, system packages, models, or start services; report those as user/agent setup actions.
+- Translation and QC should use the selected local OpenAI-compatible chat service such as oMLX/Ollama/LM Studio.
+- If local platform/local ASR API is unavailable and local Python `whisper` is unavailable, use `scripts/setup_whisper_backend.py` to install `openai-whisper` and download/cache the selected model after user approval.
+- Local service ASR via `/audio/transcriptions` may be auto-selected only after `scripts/resolve_asr_route.py` verifies the endpoint. A chat-only endpoint must not be treated as ASR-capable.
+- `asr_backend=auto` is not permission to install random ASR packages or guess local binaries; it is permission to probe known local platform ASR endpoints, then use the packaged Python Whisper route and its setup script if needed.
 
 ## Packaging Boundary
 
@@ -149,6 +195,8 @@ Before final delivery:
    - `vtt`: final `.zh.vtt`.
    - `srt`: final `.zh.srt`.
    - `both`: both `.zh.srt` and `.zh.vtt`.
-7. Keep final subtitle directories named after the original audio folders and containing only final subtitle files for that folder.
+   Use `scripts/export_final_subtitles.py "$ZH_SRT_DIR" "$FINAL_SUBTITLE_DIR" --format "$OUTPUT_FORMAT" --glob "*.zh.srt" --overwrite` for final export.
+7. Export final subtitles to `$FINAL_SUBTITLE_DIR`, defaulting to `$PROJECT_ROOT/subtitles/`, and keep that directory limited to final `.zh.vtt/.zh.srt` files.
+8. Run `scripts/validate_subtitles.py --final-dir "$FINAL_SUBTITLE_DIR"` after export.
 
 Report the final paths, output format, QC status, unresolved items, and what was learned or added to the corpus/risk library.

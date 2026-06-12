@@ -23,14 +23,14 @@
 
 输出：
 
-- 日文 ASR：`generated_subtitles/<work_id>/<asr_dir>/*.ja.asr.srt`
-- 中文 SRT 中间稿：`generated_subtitles/<work_id>/srt_work/*.zh.srt`
-- 中文本篇字幕：默认 `generated_subtitles/<work_id>/<原音频文件夹名>/*.zh.vtt`；用户指定 `srt` 或 `both` 时可输出 `.zh.srt` 或两者
-- 促销 SRT 中间稿：`generated_subtitles/<work_id>/promo_srt_work/*.zh.srt`
-- 促销字幕：默认 `generated_subtitles/<work_id>/<原促销音频文件夹名>/*.zh.vtt`；用户指定 `srt` 或 `both` 时可输出 `.zh.srt` 或两者
-- 可选比对报告：`generated_subtitles/<work_id>/asr_vs_script_report.md`
+- 日文 ASR：`$PROJECT_ROOT/<asr_dir>/*.ja.asr.srt`
+- 中文 SRT 中间稿：`$PROJECT_ROOT/srt_work/*.zh.srt`
+- 中文本篇字幕：默认 `$FINAL_SUBTITLE_DIR/*.zh.vtt`；用户指定 `srt` 或 `both` 时可输出 `.zh.srt` 或两者
+- 促销 SRT 中间稿：`$PROJECT_ROOT/promo_srt_work/*.zh.srt`
+- 促销字幕：默认 `$FINAL_SUBTITLE_DIR/*.zh.vtt`；用户指定 `srt` 或 `both` 时可输出 `.zh.srt` 或两者
+- 可选比对报告：`$PROJECT_ROOT/asr_vs_script_report.md`
 
-字幕成品目录必须与原始音频目录同名。若原始作品内有 `WAV 本編/`、`プロモーション用音声/`、`音声/` 等音频文件夹，输出目录中也建立同名文件夹，只放该文件夹音源对应的最终字幕。默认最终字幕为 `.zh.vtt`；用户指定 `srt` 或 `both` 时，可放 `.zh.srt` 或两种格式。ASR、SRT 中间稿、QC 报告、review notes 等工作产物留在作品输出根目录或专用工作目录中，不与成品字幕混放。
+`$PROJECT_ROOT` 默认就是源 ASMR 作品根目录，不再默认创建 `generated_subtitles/<WORK_ID>`。ASR、SRT 中间稿、QC 报告、台本比对报告、review notes、学习库草稿等工作产物放在 `$PROJECT_ROOT` 下的专用子目录/文件。最终字幕统一放进 `$FINAL_SUBTITLE_DIR`，默认是 `$PROJECT_ROOT/subtitles/`；不要再按 `WAV 本編/`、`プロモーション用音声/`、`音声/` 等音频目录创建同名成品目录。默认最终字幕为 `.zh.vtt`；用户指定 `srt` 或 `both` 时，可放 `.zh.srt` 或两种格式。本篇、EX、促销/试听字幕都可以放在同一个 `$FINAL_SUBTITLE_DIR`，用保留来源轨道 stem 的文件名区分，避免覆盖。
 
 DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.vtt` 处理；如果用户明确要求 `srt` 或 `both`，按用户选择交付。`.zh.srt` 默认仍作为 ASR、翻译、校验和手修阶段的中间格式保留。
 
@@ -46,13 +46,12 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 - 保持脚本、监控和后续排障方式一致。
 - 尽量减少“同一工具在不同端口间漂移”带来的混淆。
 
-本次 `RJ01201653` 的可用组合仅作为示例：
+`RJ01201653` 的历史可用组合只作为旧项目记录，不是默认路线：
 
-- ASR 示例：`mlx-community/whisper-large-v3-mlx-4bit`
-- ASR 模型路径示例：`~/.lmstudio/models/mlx-community/whisper-large-v3-mlx-4bit`
+- ASR 可选示例：用户明确选择 `mlx_whisper` 时，可用 `mlx-community/whisper-large-v3-mlx-4bit` 或其他已准备好的 ASR 模型。
 - 默认翻译后端：`auto`。Windows/WSL 优先 Ollama；macOS 可继续使用 oMLX 的 OpenAI-compatible 本地 API；LM Studio、本机其他推理服务或云端模型作为 fallback。
 - 翻译模型示例：`Qwen3.6-27B-MLX-VL-oQ6`
-- 依赖示例：`tqdm`, `mlx_whisper`, `pdftotext`
+- 依赖示例：`tqdm`, `PyYAML`, `pdftotext`
 
 替换原则：
 
@@ -60,13 +59,21 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 - 翻译模型默认走当前平台可用的高质量日译中模型；Windows/WSL 优先 Ollama，macOS 可优先 oMLX。如需更换成本地其他后端或云端模型，必须仍能稳定按编号返回中文字幕。
 - 如果模型支持“关闭思考/隐藏 reasoning”，应关闭，避免污染字幕输出。Qwen 类模型可使用 `chat_template_kwargs: {"enable_thinking": false}`。
 - 若从 oMLX 换到其他后端，优先保留 OpenAI-compatible API 形式，便于复用脚本；否则可替换脚本但保持同样的输入输出约定。
-- 如果需要访问 Metal、LM Studio/oMLX/其他本地 API、桌面音频目录或下载模型，agent 应直接请求用户批准，不要绕过权限。
+- 如果需要访问 Metal、LM Studio/oMLX/其他本地 API、桌面音频目录或下载模型，agent 应直接请求用户批准，不要绕过权限。不要默认用 `pip install` 或模型下载来补 ASR 后端；缺少 ASR 入口时先停下来，让用户选择已有 ASR、已安装的本地 ASR 工具或明确批准的 ASR 服务。
 - 长任务应优先使用脚本侧进度条展示进度；无报错时不要每几个分块向用户汇报一次，只有出现错误、需要用户决策或阶段完成时再说明。
 - 模型质检是必经步骤，不是可选项。有台本时仍以台本为主要依据，模型 QC 只作为辅助补漏，用来发现 ASR 同音错词、翻译模型误解上下文、局部台词逻辑不通等问题。
 
 ## 执行步骤
 
 1. 盘点文件
+
+   先解析项目上下文。这个步骤必须在创建配置或写任何输出文件前完成；如果源目录或父目录名是 `RJxxxx`，脚本会把它识别为 `WORK_ID`，并返回源作品根目录下的最终字幕目录：
+
+   ```bash
+   python scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json
+   ```
+
+   后续命令使用返回的 `PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR`。默认 `PROJECT_ROOT` 就是源 ASMR 作品根目录；默认 `FINAL_SUBTITLE_DIR` 是 `$PROJECT_ROOT/subtitles/`，只用于最终 `.zh.vtt/.zh.srt` 交付。不要创建额外的 `generated_subtitles/<WORK_ID>`，除非用户显式指定 `--output-root` 或 `--project-root`。
 
    - 列出作品目录下音频、台本、促销/试听音频。
    - 确认哪些是本篇，哪些是 EX/Free Talk，哪些是促销。
@@ -75,7 +82,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/fetch_dlsite_work_info.py "RJxxxx" \
-     --out "generated_subtitles/<work_id>/dlsite_work_info.json" \
+     --out "$PROJECT_ROOT/dlsite_work_info.json" \
      --allow-fail
    ```
 
@@ -85,7 +92,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/select_asr_audio_source.py "/path/to/audio_root" \
-     --json-out "generated_subtitles/<work_id>/audio_source_report.json"
+     --json-out "$PROJECT_ROOT/audio_source_report.json"
    ```
 
    默认优先使用扫描报告推荐的无 SE 音频跑 ASR，因为背景声和效果音更少，日语耳语识别通常更准。但这只是默认偏好；如果用户明确指定使用有 SE、通常版或某个目录/文件，就按用户指定，并可用 `--user-selected "/path/to/user_choice"` 记录该覆盖选择。
@@ -100,21 +107,29 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 3. 建立项目配置记录
 
-   开工后尽早创建或更新 `generated_subtitles/<work_id>/project_config.json`。配置只记录当前项目的目录、模型、输出格式和报告路径，不自动驱动流程；agent 和分阶段工具会读取它作为复现记录。
+   开工后尽早创建或更新 `$PROJECT_ROOT/project_config.json`。配置只记录当前项目的目录、模型、输出格式和报告路径，不自动驱动流程；agent 和分阶段工具会读取它作为复现记录。
 
    ```bash
-   python scripts/manage_project_config.py init "generated_subtitles/<work_id>" \
-     --work-id "<work_id>" \
+   export LOCAL_MODEL_BASE_URL="http://127.0.0.1:8000/v1"  # 本地平台 API；LM Studio 常用 1234，Ollama 常用 11434
+   export ASR_MODEL="large-v3"
+   export TRANSLATE_BASE_URL="$LOCAL_MODEL_BASE_URL"
+   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-qwen3.6-27b}"  # 本机默认推荐；若 /models 中名称不同，用实际 model id
+
+   python scripts/manage_project_config.py init "$PROJECT_ROOT" \
+     --work-id "$WORK_ID" \
      --project-type with-script \
-     --asr-dir "generated_subtitles/<work_id>/<asr_dir>" \
-     --zh-srt-dir "generated_subtitles/<work_id>/srt_work" \
-     --final-dir "generated_subtitles/<work_id>/<原音频文件夹名>" \
-     --promo-asr-dir "generated_subtitles/<work_id>/<promo_asr_dir>" \
-     --promo-zh-srt-dir "generated_subtitles/<work_id>/promo_srt_work" \
-     --promo-final-dir "generated_subtitles/<work_id>/<原促销音频文件夹名>" \
+     --source-audio-dir "$SOURCE_AUDIO_DIR" \
+     --asr-dir "$PROJECT_ROOT/<asr_dir>" \
+     --zh-srt-dir "$PROJECT_ROOT/srt_work" \
+     --final-dir "$FINAL_SUBTITLE_DIR" \
+     --promo-asr-dir "$PROJECT_ROOT/<promo_asr_dir>" \
+     --promo-zh-srt-dir "$PROJECT_ROOT/promo_srt_work" \
+     --promo-final-dir "$FINAL_SUBTITLE_DIR" \
+     --asr-model "$ASR_MODEL" \
      --asr-backend auto \
      --output-format vtt \
      --translate-backend auto \
+     --translate-base-url "$TRANSLATE_BASE_URL" \
      --translate-model "$TRANSLATE_MODEL" \
      --qc-model "$TRANSLATE_MODEL" \
      --overwrite
@@ -123,15 +138,15 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    可随时查看配置摘要：
 
    ```bash
-   python scripts/manage_project_config.py show "generated_subtitles/<work_id>"
+   python scripts/manage_project_config.py show "$PROJECT_ROOT"
    ```
 
    随后跑一次环境检测，确认脚本、Python 依赖、项目路径、ASR/翻译后端、外部命令和本地翻译 API 状态。默认只报告；如果缺轻量 Python 包，可先 dry-run，再在用户允许时自动安装。API 服务尚未启动时通常只会得到 warning；已有 `.ja.asr.srt` 时，本地 ASR 后端缺失通常不应阻塞翻译/QC/校验；如果本轮需要新跑 ASR，加 `--require-asr` 做更严格检查。
 
    ```bash
    python scripts/check_environment.py \
-     --config "generated_subtitles/<work_id>/project_config.json" \
-     --json-out "generated_subtitles/<work_id>/env_report.json"
+     --config "$PROJECT_ROOT/project_config.json" \
+     --json-out "$PROJECT_ROOT/env_report.json"
    ```
 
    如报告缺少 `tqdm`、`PyYAML` 等轻量 Python 包，可先预览安装命令：
@@ -148,37 +163,55 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 4. 跑日文 ASR
 
-   若 `project_config.json` 指向的 ASR 目录已经有可用的 `*.ja.asr.srt`，且结构校验通过，可以跳过本步骤，直接进入台本对照或翻译。只有需要新跑 ASR 时，才必须确认当前 ASR 后端可用。若有无 SE 版本且用户没有指定别的版本，优先用无 SE 版本作为 ASR 输入；最终字幕目录仍按目标音频目录命名。
-
-   先设置当前项目使用的模型和输出目录名。下面只是示例，实际可替换：
+   若 `project_config.json` 指向的 ASR 目录已经有可用的 `*.ja.asr.srt`，且结构校验通过，可以跳过本步骤，直接进入台本对照或翻译。只有需要新跑 ASR 时，才必须先跑 ASR 路线分流：
 
    ```bash
-   export ASR_MODEL="/path/or/hf_repo/of/current_asr_model"
-   export ASR_AUDIO_DIR="/path/to/asr_audio_dir"
-   export ASR_DIR="generated_subtitles/<work_id>/asr_current"
-   export PROMO_ASR_DIR="generated_subtitles/<work_id>/promo_asr_current"
+   python scripts/resolve_asr_route.py \
+     --config "$PROJECT_ROOT/project_config.json" \
+     --require-new-asr \
+     --json-out "$PROJECT_ROOT/asr_route_report.json"
    ```
 
-   单条音频：
+   默认 ASR 路线不是直接假定某个聊天端口可转写，而是按顺序探测：本地平台 API 是否支持 `/audio/transcriptions`、配置的 `local-asr-api` 是否可用、Python 是否可 import `whisper`。如果返回 `setup_python_whisper_required`，说明没有可用本地 ASR API 且本机 Python 还不能 import `whisper`，在用户允许安装/下载后运行：
 
    ```bash
-   python scripts/transcribe_mlx.py \
-     "/path/to/audio.wav" \
-     --out-dir "$ASR_DIR" \
+   python scripts/setup_whisper_backend.py \
+     --install-package \
+     --download-model \
      --model "$ASR_MODEL" \
+     --json-out "$PROJECT_ROOT/whisper_setup_report.json"
+   ```
+
+   如果返回 `run_local_platform_asr_api` 或 `run_local_asr_api`，使用报告里的 `ASR_BASE_URL` 调用本地 `/audio/transcriptions`。如果用户明确选择外部 ASR 命令或 `mlx_whisper`，按对应路线执行；否则不要用临时 pip 命令、乱猜本地入口或把只支持 chat 的翻译/QC 服务当成 ASR。若有无 SE 版本且用户没有指定别的版本，优先用无 SE 版本作为 ASR 输入；最终字幕仍输出到 `$FINAL_SUBTITLE_DIR`，不是 ASR 输入目录或音频子目录。
+
+   无论使用哪种 ASR，输出合约固定为 `$ASR_DIR/<track>.ja.asr.srt`，可选保留 `$ASR_DIR/<track>.ja.asr.json`。本地 API ASR 命令：
+
+   ```bash
+   export ASR_AUDIO_DIR="/path/to/asr_audio_dir"
+   export ASR_DIR="$PROJECT_ROOT/asr_current"
+   export PROMO_ASR_DIR="$PROJECT_ROOT/promo_asr_current"
+
+   python scripts/transcribe_openai_audio.py \
+     "$ASR_AUDIO_DIR" \
+     --out-dir "$ASR_DIR" \
+     --base-url "$ASR_BASE_URL" \
+     --model "$ASR_MODEL" \
+     --glob "*.wav" \
      --language ja
    ```
 
-   批量音频：
+   Python Whisper fallback 命令：
 
    ```bash
-   python scripts/batch_transcribe_mlx.py \
-     --audio-dir "$ASR_AUDIO_DIR" \
+   python scripts/transcribe_whisper.py \
+     "$ASR_AUDIO_DIR" \
      --out-dir "$ASR_DIR" \
      --model "$ASR_MODEL" \
      --glob "*.wav" \
      --language ja
    ```
+
+   如果用户明确选择 `mlx_whisper` 且当前环境已可 import，才使用 `transcribe_mlx.py` 或 `batch_transcribe_mlx.py`。如果用户选择外部 ASR 命令或服务，按用户提供的调用方式执行，但最终仍必须产出同名 `.ja.asr.srt` 到 `$ASR_DIR`。
 
 5. 台本对照
 
@@ -189,7 +222,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/compare_asr_to_script.py \
      --pdf "/path/to/script.pdf" \
      --asr-dir "$ASR_DIR" \
-     --out "generated_subtitles/<work_id>/asr_vs_script_report.md"
+     --out "$PROJECT_ROOT/asr_vs_script_report.md"
    ```
 
    重点看：
@@ -200,7 +233,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 6. 初翻
 
-   默认使用 `auto` 后端选择：Windows/WSL 优先 Ollama；没有 Ollama 时回退到其他可用 OpenAI-compatible 服务；macOS 可继续优先使用 oMLX 的 OpenAI-compatible 本地 API。先启动当前选择的本地推理服务，再设置当前项目使用的模型和 API 地址：
+   默认使用 `auto` 后端选择：Windows/WSL 优先 Ollama；没有 Ollama 时回退到其他可用 OpenAI-compatible 服务；macOS 可继续优先使用 oMLX 的 OpenAI-compatible 本地 API。本机默认推荐翻译/QC 使用 `qwen3.6-27b`。先启动当前选择的本地推理服务，再设置当前项目使用的模型和 API 地址：
 
    ```bash
    # macOS/oMLX 示例：
@@ -211,14 +244,16 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    ```
 
    ```bash
-   export TRANSLATE_BASE_URL="http://127.0.0.1:8000/v1"
-   export TRANSLATE_MODEL="current-good-omlx-model"
+   export TRANSLATE_BASE_URL="${TRANSLATE_BASE_URL:-$LOCAL_MODEL_BASE_URL}"
+   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-qwen3.6-27b}"
    export TRANSLATE_API_KEY="local-placeholder"
-   export ZH_SRT_DIR="generated_subtitles/<work_id>/srt_work"
-   export PROMO_ZH_SRT_DIR="generated_subtitles/<work_id>/promo_srt_work"
-   export ZH_DIR="generated_subtitles/<work_id>/<原音频文件夹名>"
-   export PROMO_ZH_DIR="generated_subtitles/<work_id>/<原促销音频文件夹名>"
+   export ZH_SRT_DIR="$PROJECT_ROOT/srt_work"
+   export PROMO_ZH_SRT_DIR="$PROJECT_ROOT/promo_srt_work"
+   export ZH_DIR="$FINAL_SUBTITLE_DIR"
+   export PROMO_ZH_DIR="$FINAL_SUBTITLE_DIR"
    ```
+
+   进入翻译前确认阶段切换：ASR 阶段已结束、`.ja.asr.srt` 已写入，当前服务已切换到翻译/QC chat 模型，`TRANSLATE_MODEL` 指向 chat 模型而不是 Whisper。若本地平台不能同时常驻 ASR 与翻译模型，先释放/卸载/切换 ASR 模型，再调用 `/chat/completions`。
 
    本篇：
 
@@ -276,7 +311,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/validate_subtitles.py \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
-     --json-out "generated_subtitles/<work_id>/validate_report.json"
+     --json-out "$PROJECT_ROOT/validate_report.json"
    ```
 
    若有促销/试听音频，使用对应的促销 ASR 目录和促销 SRT 工作目录再跑一次。
@@ -287,7 +322,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/subtitle_readability.py \
      "$ZH_SRT_DIR" \
      --max-cps 10 \
-     --json-out "generated_subtitles/<work_id>/readability_report.json"
+     --json-out "$PROJECT_ROOT/readability_report.json"
    ```
 
 8. 内容校对
@@ -296,8 +331,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/scan_subtitle_risks.py \
-     "generated_subtitles/<work_id>" \
-     --json-out "generated_subtitles/<work_id>/risk_report.json"
+     "$PROJECT_ROOT" \
+     --json-out "$PROJECT_ROOT/risk_report.json"
    ```
 
    默认风险规则文件是 `data/subtitle_risk_patterns.json`。如需测试临时规则，可用 `--rules <rules.json>` 指定。
@@ -334,7 +369,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/qc_srt_omlx.py \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
-     --out "generated_subtitles/<work_id>/qc_report.json" \
+     --out "$PROJECT_ROOT/qc_report.json" \
      --api-key "$TRANSLATE_API_KEY" \
      --base-url "$TRANSLATE_BASE_URL" \
      --model "$TRANSLATE_MODEL" \
@@ -355,11 +390,11 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/review_qc_report.py \
-     "generated_subtitles/<work_id>/qc_report.json" \
+     "$PROJECT_ROOT/qc_report.json" \
      --asr-dir "$ASR_DIR" \
      --zh-dir "$ZH_SRT_DIR" \
-     --out "generated_subtitles/<work_id>/qc_review.md" \
-     --json-out "generated_subtitles/<work_id>/qc_review_items.json"
+     --out "$PROJECT_ROOT/qc_review.md" \
+     --json-out "$PROJECT_ROOT/qc_review_items.json"
    ```
 
    人可以直接基于 `qc_report.json` 提意见，也可以在 `qc_review.md` 中逐条标记 `accept`、`reject` 或 `defer`。`review_qc_report.py` 只生成审阅材料，不自动改字幕。
@@ -368,7 +403,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/manage_qc_refinement.py start \
-     "generated_subtitles/<work_id>" \
+     "$PROJECT_ROOT" \
      --mode auto \
      --focus "用户指出的问题类型，例如语气太硬、亲密感不足、某角色称呼不稳"
    ```
@@ -377,30 +412,30 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/manage_qc_refinement.py start \
-     "generated_subtitles/<work_id>" \
+     "$PROJECT_ROOT" \
      --mode guided \
      --focus "台词精修" \
      --user-guidance "现在太硬了，希望更亲密、更像 ASMR 口语，但不要过度改写"
    ```
 
-   该命令会创建 `generated_subtitles/<work_id>/qc_refinement/round_NN/manifest.json`、`context_profile.md` 和 `next_steps.md`。`context_profile.md` 会记录自动识别到的作品情境、轨道抽样和用户引导。按 `next_steps.md` 执行：重新跑一轮聚焦 QC、生成 review items、由 agent 基于证据标记 `accept/reject/defer`、应用 accepted 项、再跑结构/风险/可读性检查。用户仍不满意时再开下一轮。
+   该命令会创建 `$PROJECT_ROOT/qc_refinement/round_NN/manifest.json`、`context_profile.md` 和 `next_steps.md`。`context_profile.md` 会记录自动识别到的作品情境、轨道抽样和用户引导。按 `next_steps.md` 执行：重新跑一轮聚焦 QC、生成 review items、由 agent 基于证据标记 `accept/reject/defer`、应用 accepted 项、再跑结构/风险/可读性检查。用户仍不满意时再开下一轮。
 
    若 agent 已经按证据确认一批明确问题，可直接编辑 `qc_review_items.json`：把明确应修的条目标为 `"decision": "accept"`，必要时把最终译文写入 `"replacement"`；误报标为 `reject`，无法判断标为 `defer`。随后先 dry-run，再正式应用：
 
    ```bash
    python scripts/apply_qc_decisions.py \
-     "generated_subtitles/<work_id>/qc_review_items.json" \
+     "$PROJECT_ROOT/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
-     --json-out "generated_subtitles/<work_id>/qc_apply_report.json"
+     --json-out "$PROJECT_ROOT/qc_apply_report.json"
    ```
 
    ```bash
    python scripts/apply_qc_decisions.py \
-     "generated_subtitles/<work_id>/qc_review_items.json" \
+     "$PROJECT_ROOT/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
      --apply \
-     --backup-dir "generated_subtitles/<work_id>/qc_apply_backup" \
-     --json-out "generated_subtitles/<work_id>/qc_apply_report.json"
+     --backup-dir "$PROJECT_ROOT/qc_apply_backup" \
+     --json-out "$PROJECT_ROOT/qc_apply_report.json"
    ```
 
    只允许应用已确认的 `accept` 项；应用后必须再跑结构校验、高风险扫描和可读性检查。
@@ -414,31 +449,45 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    - 单独打印全文人工读。
    - 单独跑结构校验。
 
-12. 导出 WebVTT
+12. 导出最终字幕
 
-   结构校验、可读性检查、人工修订和模型质检都通过后，按用户选择导出最终字幕。默认把 SRT 中间稿导出为 WebVTT `.zh.vtt`；如果用户要求 `srt`，可直接交付 `.zh.srt`；如果用户要求 `both`，同时交付 `.zh.srt` 和 `.zh.vtt`。
+   结构校验、可读性检查、人工修订和模型质检都通过后，按用户选择导出最终字幕。默认把 SRT 中间稿导出为 WebVTT `.zh.vtt`；如果用户要求 `srt`，导出 `.zh.srt`；如果用户要求 `both`，同时导出 `.zh.srt` 和 `.zh.vtt`。
 
    本篇：
 
    ```bash
-   python scripts/convert_srt_to_vtt.py \
+   export OUTPUT_FORMAT="vtt"  # 可改为 srt 或 both
+
+   python scripts/export_final_subtitles.py \
      "$ZH_SRT_DIR" \
      "$ZH_DIR" \
+     --format "$OUTPUT_FORMAT" \
      --glob "*.zh.srt" \
-     --overwrite
+     --overwrite \
+     --json-out "$PROJECT_ROOT/export_report.json"
    ```
 
    促销：
 
    ```bash
-   python scripts/convert_srt_to_vtt.py \
+   python scripts/export_final_subtitles.py \
      "$PROMO_ZH_SRT_DIR" \
      "$PROMO_ZH_DIR" \
+     --format "$OUTPUT_FORMAT" \
      --glob "*.zh.srt" \
-     --overwrite
+     --overwrite \
+     --json-out "$PROJECT_ROOT/promo_export_report.json"
    ```
 
-   导出后确认最终成品目录只包含该音频目录对应的最终字幕格式。默认只放 `.zh.vtt`；用户指定 `srt` 或 `both` 时按选择放置。如需回修，先改 SRT 中间稿并重新校验，再重新导出 VTT。
+   导出后确认 `$FINAL_SUBTITLE_DIR` 只包含最终 `.zh.vtt/.zh.srt` 字幕，不混入 ASR、SRT 工作稿、QC 报告或 review notes：
+
+   ```bash
+   python scripts/validate_subtitles.py \
+     --final-dir "$FINAL_SUBTITLE_DIR" \
+     --json-out "$PROJECT_ROOT/final_validate_report.json"
+   ```
+
+   如需回修，先改 SRT 中间稿并重新校验，再重新导出最终字幕。
 
 13. 更新学习库
 
@@ -465,15 +514,15 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    python scripts/update_learning_library.py \
-     "generated_subtitles/<work_id>" \
-     --out "generated_subtitles/<work_id>/learning_update.md"
+     "$PROJECT_ROOT" \
+     --out "$PROJECT_ROOT/learning_update.md"
    ```
 
    确认内容后，可追加项目经验骨架，再把可复用内容手动同步到对应 reference：
 
    ```bash
    python scripts/update_learning_library.py \
-     "generated_subtitles/<work_id>" \
+     "$PROJECT_ROOT" \
      --append-project-lesson
    ```
 

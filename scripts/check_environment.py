@@ -20,14 +20,23 @@ STATUSES = ("OK", "WARN", "FAIL")
 OUTPUT_FORMATS = {"vtt", "srt", "both"}
 OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 OPENAI_COMPATIBLE_BASE_URL = "http://127.0.0.1:8000/v1"
+LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
+PLATFORM_ASR_CANDIDATES = [OPENAI_COMPATIBLE_BASE_URL, LMSTUDIO_BASE_URL, OLLAMA_BASE_URL]
+ASR_ENDPOINT_EXISTS_CODES = {400, 401, 403, 405, 415, 422}
 REQUIRED_SCRIPTS = [
     "transcribe_mlx.py",
     "batch_transcribe_mlx.py",
+    "transcribe_whisper.py",
+    "setup_whisper_backend.py",
+    "transcribe_openai_audio.py",
     "translate_srt_omlx.py",
     "batch_translate_srt_omlx.py",
     "qc_srt_omlx.py",
     "convert_srt_to_vtt.py",
+    "export_final_subtitles.py",
     "validate_subtitles.py",
+    "resolve_project_context.py",
+    "resolve_asr_route.py",
     "scan_subtitle_risks.py",
     "select_asr_audio_source.py",
     "subtitle_readability.py",
@@ -72,11 +81,18 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def work_root() -> Path:
+    return Path.cwd()
+
+
 def rel(path: Path) -> str:
     try:
-        return path.resolve().relative_to(repo_root()).as_posix()
+        return path.resolve().relative_to(work_root()).as_posix()
     except ValueError:
-        return path.as_posix()
+        try:
+            return path.resolve().relative_to(repo_root()).as_posix()
+        except ValueError:
+            return path.as_posix()
 
 
 def resolve_path(value: str | None) -> Path | None:
@@ -85,7 +101,7 @@ def resolve_path(value: str | None) -> Path | None:
     path = Path(value).expanduser()
     if path.is_absolute():
         return path
-    return repo_root() / path
+    return work_root() / path
 
 
 def find_config(target: str | None) -> Path | None:
@@ -164,7 +180,8 @@ def default_translate_backend_for_platform(config: dict[str, Any] | None) -> str
 
 
 def default_asr_backend_for_platform(config: dict[str, Any] | None) -> str:
-    return "mlx_whisper" if target_platform_id(config) == "macos" else "external"
+    profile = str((config or {}).get("platform", {}).get("profile", "")).strip().lower()
+    return "mlx_whisper" if profile == "macos-mlx" else "local-platform-asr-api"
 
 
 def configured_asr_backend(config: dict[str, Any] | None) -> str:
@@ -213,16 +230,88 @@ def effective_asr_backend(config: dict[str, Any] | None) -> str:
     configured = configured_asr_backend(config)
     if configured and configured != "auto":
         return configured
-    platform_default = default_asr_backend_for_platform(config)
-    if platform_default == "mlx_whisper" and module_available("mlx_whisper"):
-        return "mlx_whisper"
-    return "external"
+    return default_asr_backend_for_platform(config)
 
 
 def default_base_url_for_backend(backend: str) -> str:
     if backend == "ollama":
         return OLLAMA_BASE_URL
     return OPENAI_COMPATIBLE_BASE_URL
+
+
+def normalize_base_url(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
+def dedupe_urls(values: list[str]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = normalize_base_url(value)
+        if normalized and normalized not in seen:
+            urls.append(normalized)
+            seen.add(normalized)
+    return urls
+
+
+def audio_transcriptions_url(base_url: str) -> str:
+    return normalize_base_url(base_url) + "/audio/transcriptions"
+
+
+def probe_audio_transcriptions(base_url: str, timeout: float = 1.0) -> dict[str, Any]:
+    url = audio_transcriptions_url(base_url)
+    request = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status_code = getattr(response, "status", 200)
+        return {"base_url": normalize_base_url(base_url), "ok": True, "status_code": status_code, "detail": f"GET {url} -> HTTP {status_code}"}
+    except urllib.error.HTTPError as exc:
+        ok = exc.code in ASR_ENDPOINT_EXISTS_CODES
+        return {"base_url": normalize_base_url(base_url), "ok": ok, "status_code": exc.code, "detail": f"GET {url} -> HTTP {exc.code}"}
+    except Exception as exc:
+        return {"base_url": normalize_base_url(base_url), "ok": False, "status_code": None, "detail": f"Cannot reach {url}: {exc}"}
+
+
+def platform_asr_candidates(config: dict[str, Any] | None) -> list[str]:
+    models = config.get("models", {}) if config else {}
+    values: list[str] = []
+    translate_base_url = str(models.get("translate_base_url", "")).strip()
+    if translate_base_url:
+        values.append(translate_base_url)
+    translate_backend = str(models.get("translate_backend", "")).strip().lower()
+    if translate_backend == "ollama":
+        values.append(OLLAMA_BASE_URL)
+    elif translate_backend == "lmstudio":
+        values.append(LMSTUDIO_BASE_URL)
+    elif translate_backend in {"omlx", "openai-compatible", "auto", ""}:
+        values.append(OPENAI_COMPATIBLE_BASE_URL)
+    values.extend(PLATFORM_ASR_CANDIDATES)
+    return dedupe_urls(values)
+
+
+def explicit_asr_candidates(config: dict[str, Any] | None) -> list[str]:
+    models = config.get("models", {}) if config else {}
+    return dedupe_urls([str(models.get("asr_base_url", "")).strip()])
+
+
+def first_working_asr_api(candidates: list[str], timeout: float = 1.0) -> tuple[str, list[dict[str, Any]]]:
+    probes: list[dict[str, Any]] = []
+    for base_url in candidates:
+        result = probe_audio_transcriptions(base_url, timeout=timeout)
+        probes.append(result)
+        if result["ok"]:
+            return result["base_url"], probes
+    return "", probes
+
+
+def auto_asr_api_available(config: dict[str, Any] | None) -> tuple[str, str, list[dict[str, Any]]]:
+    platform_base_url, platform_probes = first_working_asr_api(platform_asr_candidates(config))
+    if platform_base_url:
+        return "local-platform-asr-api", platform_base_url, platform_probes
+    explicit_base_url, explicit_probes = first_working_asr_api(explicit_asr_candidates(config))
+    if explicit_base_url:
+        return "local-asr-api", explicit_base_url, platform_probes + explicit_probes
+    return "", "", platform_probes + explicit_probes
 
 
 def check_platform(config: dict[str, Any] | None) -> list[Check]:
@@ -323,20 +412,21 @@ def check_asr_recommendation(config: dict[str, Any] | None, *, require_asr: bool
     effective = effective_asr_backend(config)
     asr_files = existing_asr_files(config)
     mlx_found = module_available("mlx_whisper")
+    detected_auto_backend, detected_auto_base_url, auto_probes = auto_asr_api_available(config)
     checks = [
         Check(
             "asr",
             "existing_asr_files",
             "OK" if asr_files else "WARN",
             f"{len(asr_files)} *.ja.asr.srt file(s) found",
-            "Existing ASR files allow translation/QC/checks to continue even if the local ASR backend is unavailable.",
+            "Existing ASR files allow translation/QC/checks to continue. Do not install ASR packages just because a reusable ASR file already exists.",
         ),
         Check(
             "asr",
             "platform_default_asr_backend",
             "OK",
             platform_default,
-            f"target_platform={target_platform_id(config)}. macOS may use MLX; Windows/WSL should avoid MLX-only assumptions.",
+            f"target_platform={target_platform_id(config)}. Auto probes local platform /audio/transcriptions first, then configured local-asr-api, then Python openai-whisper.",
         ),
     ]
     if configured and configured != "auto":
@@ -345,17 +435,54 @@ def check_asr_recommendation(config: dict[str, Any] | None, *, require_asr: bool
         checks.append(Check("asr", "configured_asr_backend", "OK", configured or "auto", "Auto recommends an ASR route; it does not run ASR."))
     if effective == "mlx_whisper":
         recommended_status = "OK" if mlx_found else ("FAIL" if require_asr or not asr_files else "WARN")
+        recommended_message = effective
+        recommended_detail = f"mlx_whisper={'yes' if mlx_found else 'no'}. This route is only selected by explicit backend/profile."
+    elif effective in {"local-platform-asr-api", "auto"} and configured in {"", "auto"}:
+        if detected_auto_backend:
+            recommended_status = "OK"
+            recommended_message = f"{detected_auto_backend} at {detected_auto_base_url}"
+        elif module_available("whisper"):
+            recommended_status = "OK"
+            recommended_message = "python-whisper fallback"
+        else:
+            recommended_status = "FAIL" if require_asr or (config and not asr_files) else "WARN"
+            recommended_message = "setup_python_whisper_required"
+        probe_summary = "; ".join(f"{item['base_url']}={'ok' if item['ok'] else 'not-ok'}" for item in auto_probes) or "no API candidates"
+        recommended_detail = (
+            f"Probe summary: {probe_summary}. "
+            f"whisper={'yes' if module_available('whisper') else 'no'}, mlx_whisper={'yes' if mlx_found else 'no'}. "
+            "ASR auto never treats a chat-only endpoint as transcription-capable unless /audio/transcriptions is detected."
+        )
+    elif effective in {"python-whisper", "whisper", "openai-whisper"}:
+        recommended_status = "OK" if module_available("whisper") else ("FAIL" if require_asr or (config and not asr_files) else "WARN")
+        recommended_message = effective
+        recommended_detail = "Explicit Python Whisper route. Use setup_whisper_backend.py after user approval if import is missing."
+    elif effective in {"local-asr-api", "openai-audio", "local-service"}:
+        explicit_base_url = explicit_asr_candidates(config)[0] if explicit_asr_candidates(config) else ""
+        if not explicit_base_url:
+            recommended_status = "FAIL" if require_asr else "WARN"
+            recommended_message = "local-asr-api missing asr_base_url"
+            recommended_detail = "Explicit local ASR API route requires asr_base_url or --asr-base-url."
+        else:
+            probe = probe_audio_transcriptions(explicit_base_url)
+            recommended_status = "OK" if probe["ok"] else ("FAIL" if require_asr else "WARN")
+            recommended_message = f"{effective} at {explicit_base_url}"
+            recommended_detail = probe["detail"]
     elif effective == "external":
-        recommended_status = "OK" if configured not in {"", "auto"} else "WARN"
+        recommended_status = "FAIL" if require_asr and configured in {"", "auto"} and not asr_files else ("OK" if configured == "external" else "WARN")
+        recommended_message = effective
+        recommended_detail = "External ASR requires a user-selected installed command/service."
     else:
         recommended_status = "OK"
+        recommended_message = effective
+        recommended_detail = "Project-specific ASR backend; agent must know how to invoke it."
     checks.append(
         Check(
             "asr",
             "recommended_asr_backend",
             recommended_status,
-            effective,
-            f"mlx_whisper={'yes' if mlx_found else 'no'}. External means use existing ASR, another Whisper-compatible tool, or a user-approved ASR service.",
+            recommended_message,
+            recommended_detail,
         )
     )
     return checks
@@ -387,24 +514,41 @@ def check_imports(config: dict[str, Any] | None, *, require_asr: bool) -> list[C
             )
         )
 
-    models = config.get("models", {}) if config else {}
-    asr_backend = str(models.get("asr_backend", "")).strip().lower()
     asr_files = existing_asr_files(config)
-    mlx_needed = asr_backend == "mlx_whisper" and (require_asr or not asr_files)
-    mlx_status = "OK" if module_available("mlx_whisper") else ("FAIL" if mlx_needed else "WARN")
+    effective = effective_asr_backend(config)
+    detected_auto_backend, _, _ = auto_asr_api_available(config)
+    auto_will_need_python = effective in {"local-platform-asr-api", "auto"} and not detected_auto_backend
+    whisper_needed = (
+        effective in {"python-whisper", "whisper", "openai-whisper"} or auto_will_need_python
+    ) and (require_asr or (bool(config) and not asr_files))
+    whisper_status = "OK" if module_available("whisper") else ("FAIL" if whisper_needed else "WARN")
+    checks.append(
+        Check(
+            "imports",
+            "whisper",
+            whisper_status,
+            "Import is available" if module_available("whisper") else "Import is not available",
+            "Required only when local platform/local ASR API is unavailable and the workflow falls back to Python Whisper. Use setup_whisper_backend.py after user approval.",
+        )
+    )
+    explicit_mlx = configured_asr_backend(config) == "mlx_whisper" or str((config or {}).get("platform", {}).get("profile", "")).strip().lower() == "macos-mlx"
+    mlx_needed = explicit_mlx and (require_asr or not asr_files)
+    mlx_status = "OK" if module_available("mlx_whisper") else ("FAIL" if mlx_needed else "OK")
     if module_available("mlx_whisper"):
         mlx_message = "Import is available"
-    elif asr_backend == "mlx_whisper" and asr_files and not require_asr:
+    elif explicit_mlx and asr_files and not require_asr:
         mlx_message = "Import is not available, but existing ASR files are present"
+    elif explicit_mlx:
+        mlx_message = "Import is not available for explicitly selected mlx_whisper route"
     else:
-        mlx_message = "Import is not available"
+        mlx_message = "Not required for the current ASR route"
     checks.append(
         Check(
             "imports",
             "mlx_whisper",
             mlx_status,
             mlx_message,
-            "Required only when the project must run new ASR through mlx_whisper. Existing *.ja.asr.srt files can skip this backend.",
+            "Required only when the user explicitly chose mlx_whisper for new ASR. Missing mlx_whisper is not a reason to auto-install packages or download models.",
         )
     )
     return checks
@@ -460,7 +604,7 @@ def install_missing_python_packages(*, dry_run: bool) -> list[Check]:
     return checks
 
 
-def check_external_tools(config: dict[str, Any] | None) -> list[Check]:
+def check_external_tools(config: dict[str, Any] | None, *, require_asr: bool) -> list[Check]:
     checks: list[Check] = []
     paths = config.get("paths", {}) if config else {}
     project_type = str(config.get("project_type", "")) if config else ""
@@ -475,6 +619,24 @@ def check_external_tools(config: dict[str, Any] | None) -> list[Check]:
             "OK" if pdftotext_path else ("FAIL" if pdftotext_needed else "WARN"),
             f"Found {pdftotext_path}" if pdftotext_path else "Command not found",
             "Needed for PDF script comparison; plain text scripts do not need it.",
+        )
+    )
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    asr_backend = effective_asr_backend(config)
+    asr_files = existing_asr_files(config)
+    detected_auto_backend, _, _ = auto_asr_api_available(config)
+    auto_will_need_python = asr_backend in {"local-platform-asr-api", "auto"} and not detected_auto_backend
+    ffmpeg_required = (
+        asr_backend in {"python-whisper", "whisper", "openai-whisper"} or auto_will_need_python
+    ) and (require_asr or (bool(config) and not asr_files))
+    checks.append(
+        Check(
+            "commands",
+            "ffmpeg",
+            "OK" if ffmpeg_path else ("FAIL" if ffmpeg_required else "WARN"),
+            f"Found {ffmpeg_path}" if ffmpeg_path else "Command not found",
+            "Required by openai-whisper when this run creates new ASR; existing ASR files can continue without it.",
         )
     )
 
@@ -738,7 +900,7 @@ def main() -> int:
     else:
         checks.extend(check_imports(config, require_asr=args.require_asr))
         checks.extend(check_dependency_install_plan())
-    checks.extend(check_external_tools(config))
+    checks.extend(check_external_tools(config, require_asr=args.require_asr))
     checks.extend(check_config_paths(config, strict_paths=args.strict_paths))
     checks.extend(
         check_api(

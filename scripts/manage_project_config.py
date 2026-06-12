@@ -78,6 +78,7 @@ def build_config(args: argparse.Namespace, existing: dict[str, Any] | None = Non
         },
         "models": {
             "asr_backend": args.asr_backend,
+            "asr_base_url": args.asr_base_url,
             "asr_model": args.asr_model,
             "translate_backend": args.translate_backend,
             "translate_base_url": args.translate_base_url,
@@ -118,6 +119,7 @@ def print_config_summary(data: dict[str, Any]) -> None:
         print(f"promo_zh_srt_dir: {paths.get('promo_zh_srt_dir', '')}")
         print(f"promo_final_dir: {paths.get('promo_final_dir', '')}")
     print(f"asr_backend: {models.get('asr_backend', '')}")
+    print(f"asr_base_url: {models.get('asr_base_url', '')}")
     print(f"translate_backend: {models.get('translate_backend', '')}")
     print(f"translate_base_url: {models.get('translate_base_url', '')}")
     print(f"translate_model: {models.get('translate_model', '')}")
@@ -125,7 +127,7 @@ def print_config_summary(data: dict[str, Any]) -> None:
 
 
 def add_common_init_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("project_root", help="Project output root, for example generated_subtitles/RJ01533156.")
+    parser.add_argument("project_root", help="Project root, normally the source ASMR work directory such as /path/to/RJ01533156.")
     parser.add_argument("--work-id", help="Work ID. Defaults to project_root directory name.")
     parser.add_argument("--project-type", default="unknown", choices=sorted(PROJECT_TYPES))
     parser.add_argument("--platform-profile", default="auto", choices=sorted(PLATFORM_PROFILES))
@@ -138,6 +140,7 @@ def add_common_init_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--promo-zh-srt-dir", default="")
     parser.add_argument("--promo-final-dir", default="")
     parser.add_argument("--asr-backend", default="auto")
+    parser.add_argument("--asr-base-url", default="", help="Local ASR API base URL, for example http://127.0.0.1:8000/v1.")
     parser.add_argument("--asr-model", default="")
     parser.add_argument("--translate-backend", default="auto", help="Backend record: auto, ollama, omlx, openai-compatible, or another project-specific value.")
     parser.add_argument("--translate-base-url", default="")

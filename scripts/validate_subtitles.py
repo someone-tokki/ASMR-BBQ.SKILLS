@@ -185,7 +185,7 @@ def check_pairs(asr_dir: Path, zh_dir: Path) -> list[Issue]:
     return issues
 
 
-def check_final_dir(final_dir: Path) -> list[Issue]:
+def check_final_dir(final_dir: Path, *, allow_work_artifacts: bool = False) -> list[Issue]:
     issues: list[Issue] = []
     if not final_dir.exists():
         return [Issue("error", "missing_final_dir", rel(final_dir), "Final subtitle directory does not exist")]
@@ -200,6 +200,8 @@ def check_final_dir(final_dir: Path) -> list[Issue]:
             continue
         name = path.name
         if name in WORK_ARTIFACT_NAMES or any(name.endswith(suffix) for suffix in WORK_ARTIFACT_SUFFIXES):
+            if allow_work_artifacts:
+                continue
             issues.append(
                 Issue(
                     "warning",
@@ -229,7 +231,8 @@ def main() -> int:
     parser.add_argument("paths", nargs="*", help="SRT files or directories to validate individually.")
     parser.add_argument("--asr-dir", help="Directory containing *.ja.asr.srt files.")
     parser.add_argument("--zh-dir", help="Directory containing matching *.zh.srt files.")
-    parser.add_argument("--final-dir", help="Final delivery directory to check for mixed work artifacts.")
+    parser.add_argument("--final-dir", help="Final delivery directory to check for subtitle presence and mixed work artifacts.")
+    parser.add_argument("--allow-work-artifacts", action="store_true", help="Allow reports/configs in --final-dir. Use when final VTT files are intentionally exported to PROJECT_ROOT.")
     parser.add_argument("--json-out", help="Write a JSON report to this path.")
     parser.add_argument("--warnings-as-errors", action="store_true", help="Return exit code 1 when warnings are present.")
     args = parser.parse_args()
@@ -243,7 +246,7 @@ def main() -> int:
         else:
             issues.extend(check_pairs(Path(args.asr_dir), Path(args.zh_dir)))
     if args.final_dir:
-        issues.extend(check_final_dir(Path(args.final_dir)))
+        issues.extend(check_final_dir(Path(args.final_dir), allow_work_artifacts=args.allow_work_artifacts))
     if not args.paths and not (args.asr_dir or args.zh_dir) and not args.final_dir:
         issues.append(Issue("error", "no_input", ".", "Provide paths, --asr-dir/--zh-dir, or --final-dir"))
 

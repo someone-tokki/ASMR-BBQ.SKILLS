@@ -140,7 +140,7 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
         decision = "prefer_no_se"
         notes = [
             "No-SE audio was detected. Prefer the recommended no-SE directory/files for ASR when timing appears compatible with the delivery audio and the user has not requested another version.",
-            "Keep final subtitle directories aligned with the original target audio folders; no-SE is an ASR source preference, not necessarily the delivery folder name.",
+            "No-SE is an ASR source preference only. Deliver final subtitles to the configured final_subtitle_dir, normally the source ASMR work directory's subtitles folder.",
         ]
     elif files:
         decision = "no_no_se_detected"
