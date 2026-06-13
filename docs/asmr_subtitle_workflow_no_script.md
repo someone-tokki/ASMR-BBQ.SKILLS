@@ -9,8 +9,9 @@
 - 无台本时，ASR 是字幕时间轴和原文的主要来源，但不能盲信。
 - 使用当前可用的较好 ASR 方案和更严格的人工校对；模型可替换。
 - 不能确认的句子要标为待复核或向用户说明，不要编剧情。
-- 促销/试听也要单独跑、单独校对。
+- 促销/试听、EX/free talk、bonus、DLC、特典等附加音频也要单独跑、单独校对；除非用户明确要求只翻正片，否则默认全部纳入翻译范围。
 - 中文质量目标与有台本项目相同：自然、有人情味、符合情境，不生硬直译。
+- 所有优化都不能破坏质量底线：保持 SRT 编号、顺序、开始时间、结束时间不变；翻译输出必须覆盖所有目标编号；context halo 只用于理解，不能写入输出；QC 建议只能作为候选，不能直接自动改字幕；ASMR 语义、角色关系、动作连续性优先于机械压缩 chunk；缓存命中不能复用到内容、模型、prompt/schema、参数或上下文不一致的 chunk。
 - 长时间 ASR/翻译任务应使用脚本侧进度条；正常推进时少打扰用户，只有报错、需要决策或阶段完成时再单独说明。
 - 模型质检是必经步骤，不是可选项。无台本项目尤其容易出现“单句看似通顺、整段逻辑跑偏”的错译，必须用模型对照日文 ASR 和中文字幕做一轮候选问题扫描。
 
@@ -19,7 +20,31 @@
 ## 推荐输出结构
 
 ```text
-$PROJECT_ROOT/  # 默认就是源 ASMR 作品根目录
+$SOURCE_PROJECT_DIR/  # 源 ASMR 作品根目录
+  subtitle_project/  # 默认 PROJECT_ROOT，工程文件和中间文件集中放这里
+    project_config.json
+    env_report.json
+    audio_source_report.json
+    asr_route_report.json
+    <asr_dir>/
+      <track>.ja.asr.json
+      <track>.ja.asr.srt
+    srt_work/
+      <track>.zh.srt
+    <promo_asr_dir>/
+      <promo>.ja.asr.json
+      <promo>.ja.asr.srt
+    promo_srt_work/
+      <promo>.zh.srt
+    qc_report.json
+    qc_report_chunks/
+    qc_refinement/
+    review_notes.md
+  subtitles/  # 默认 FINAL_SUBTITLE_DIR，只放最终交付字幕
+    <track>.zh.vtt
+    <promo>.zh.vtt
+
+$PROJECT_ROOT/  # 默认等于 $SOURCE_PROJECT_DIR/subtitle_project/
   <asr_dir>/
     <track>.ja.asr.json
     <track>.ja.asr.srt
@@ -32,12 +57,12 @@ $PROJECT_ROOT/  # 默认就是源 ASMR 作品根目录
     <promo>.zh.srt
   review_notes.md
 
-$FINAL_SUBTITLE_DIR/  # 默认是 $PROJECT_ROOT/subtitles/
+$FINAL_SUBTITLE_DIR/  # 默认是 $SOURCE_PROJECT_DIR/subtitles/
   <track>.zh.vtt      # 默认最终格式；用户可要求 .zh.srt 或 both
   <promo>.zh.vtt
 ```
 
-`$PROJECT_ROOT` 默认就是源 ASMR 作品根目录，不再默认创建 `generated_subtitles/<WORK_ID>`。ASR、SRT 中间稿、QC 报告、review notes、学习库草稿等工作产物放在 `$PROJECT_ROOT` 下的专用子目录/文件。最终字幕统一放进 `$FINAL_SUBTITLE_DIR`，默认是 `$PROJECT_ROOT/subtitles/`；不要再按 `音声/`、`WAV 本編/`、`プロモーション用音声/` 等音频目录创建同名成品目录。默认最终字幕为 `.zh.vtt`；用户指定 `srt` 或 `both` 时，可放 `.zh.srt` 或两种格式。本篇、EX、促销/试听字幕都可以放在同一个 `$FINAL_SUBTITLE_DIR`，用保留来源轨道 stem 的文件名区分，避免覆盖。
+`$SOURCE_PROJECT_DIR` 默认是源 ASMR 作品根目录；`$PROJECT_ROOT` 默认是 `$SOURCE_PROJECT_DIR/subtitle_project/`，不再默认创建 `generated_subtitles/<WORK_ID>`，也不要把 `project_config.json`、QC 报告、ASR 中间稿等散放在作品根目录。ASR、SRT 中间稿、QC 报告、review notes、学习库草稿等工作产物放在 `$PROJECT_ROOT` 下的专用子目录/文件。最终字幕统一放进 `$FINAL_SUBTITLE_DIR`，默认是 `$SOURCE_PROJECT_DIR/subtitles/`；不要再按 `音声/`、`WAV 本編/`、`プロモーション用音声/` 等音频目录创建同名成品目录。默认最终字幕为 `.zh.vtt`；用户指定 `srt` 或 `both` 时，可放 `.zh.srt` 或两种格式。本篇、EX、促销/试听字幕都可以放在同一个 `$FINAL_SUBTITLE_DIR`，用保留来源轨道 stem 的文件名区分，避免覆盖。
 
 DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.vtt` 处理；如果用户明确要求 `srt` 或 `both`，按用户选择交付。`.zh.srt` 默认仍作为 ASR、翻译、校验和手修阶段的中间格式保留。
 
@@ -51,10 +76,11 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json
    ```
 
-   后续命令使用返回的 `PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR`。默认 `PROJECT_ROOT` 就是源 ASMR 作品根目录；默认 `FINAL_SUBTITLE_DIR` 是 `$PROJECT_ROOT/subtitles/`，只用于最终 `.zh.vtt/.zh.srt` 交付。不要创建额外的 `generated_subtitles/<WORK_ID>`，除非用户显式指定 `--output-root` 或 `--project-root`。
+   后续命令使用返回的 `PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR`。默认 `PROJECT_ROOT` 是 `$SOURCE_PROJECT_DIR/subtitle_project/`，只用于工程文件和中间文件；默认 `FINAL_SUBTITLE_DIR` 是 `$SOURCE_PROJECT_DIR/subtitles/`，只用于最终 `.zh.vtt/.zh.srt` 交付。不要创建额外的 `generated_subtitles/<WORK_ID>`，除非用户显式指定 `--output-root` 或 `--project-root`。
 
-   - 列出音频文件、标题、时长、目录结构。
-   - 根据文件名判断剧情顺序、本篇、EX、促销。
+   - 递归列出源作品文件夹下所有目标音频文件、标题、时长、目录结构。
+   - 根据文件名判断剧情顺序、本篇、EX/free talk、bonus、DLC、特典、促销/试听，但分类只用于组织工作目录和命名，不用于默认排除。
+   - 不要只看主线编号、目录名或“看起来是试听/附赠”就跳过音频。若用户没有明确说只翻正片或只翻指定文件，所有发现的目标音频都要进入 ASR/翻译/QC/导出范围。
    - 若有 DLsite 商品页文本、标题、角色介绍、试听说明，可作为低强度上下文参考，但不要当完整台本。
    - 如果目录名或用户输入中识别到 RJ 号，且允许联网，可抓取 DLsite 商品页元信息：
 
@@ -91,6 +117,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    export ASR_MODEL="large-v3"
    export TRANSLATE_BASE_URL="$LOCAL_MODEL_BASE_URL"
    export TRANSLATE_MODEL="${TRANSLATE_MODEL:-qwen3.6-27b}"  # 本机默认推荐；若 /models 中名称不同，用实际 model id
+   export QC_BASE_URL="${QC_BASE_URL:-$TRANSLATE_BASE_URL}"
+   export QC_MODEL="${QC_MODEL:-$TRANSLATE_MODEL}"
 
    python scripts/manage_project_config.py init "$PROJECT_ROOT" \
      --work-id "$WORK_ID" \
@@ -105,8 +133,45 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --translate-backend auto \
      --translate-base-url "$TRANSLATE_BASE_URL" \
      --translate-model "$TRANSLATE_MODEL" \
-     --qc-model "$TRANSLATE_MODEL" \
+     --qc-backend auto \
+     --qc-base-url "$QC_BASE_URL" \
+     --qc-model "$QC_MODEL" \
      --overwrite
+   ```
+
+   同时创建用户可编辑的工况模型偏好文件。这个文件不是密钥配置，不写 API key；用户可以用它指定 ASR、翻译、QC 分别使用什么 backend/base URL/model：
+
+   ```bash
+   python scripts/manage_model_profile.py init "$PROJECT_ROOT" --from-config --overwrite
+   ```
+
+   如果用户在任务中要求不同工况使用不同模型，用 `set-stage` 写入偏好。例如：
+
+   ```bash
+   python scripts/manage_model_profile.py set-stage "$PROJECT_ROOT" asr \
+     --backend auto \
+     --model large-v3 \
+     --interface /audio/transcriptions
+
+   python scripts/manage_model_profile.py set-stage "$PROJECT_ROOT" translate \
+     --backend auto \
+     --base-url "$TRANSLATE_BASE_URL" \
+     --model "$TRANSLATE_MODEL" \
+     --interface /chat/completions
+
+   python scripts/manage_model_profile.py set-stage "$PROJECT_ROOT" qc \
+     --backend auto \
+     --base-url "$QC_BASE_URL" \
+     --model "$QC_MODEL" \
+     --interface /chat/completions
+   ```
+
+   每个阶段开始前先 resolve 当前有效选择；agent 后续命令应使用 resolve 结果，而不是把上一阶段模型沿用到下一阶段：
+
+   ```bash
+   python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" asr --from-config
+   python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" translate --from-config
+   python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" qc --from-config
    ```
 
    可随时查看配置摘要：
@@ -165,11 +230,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    - 使用初始提示说明“成人向日语 ASMR，耳语、吐息、拟声多”
    - 对特别难的音频分段重跑或换更强模型
 
+   ASR 优化必须谨慎使用。优先无 SE 音源；如果所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
+
    无论使用哪种 ASR，输出合约固定为 `$ASR_DIR/<track>.ja.asr.srt`，可选保留 `$ASR_DIR/<track>.ja.asr.json`。本地 API ASR 命令：
 
    ```bash
    export ASR_AUDIO_DIR="/path/to/asr_audio_dir"
    export ASR_DIR="$PROJECT_ROOT/asr_current"
+   export ASR_PROMPT="これは日本語の成人向けASMR音声です。囁き、吐息、間、耳舐め、キス音、擬音が多いです。"
 
    python scripts/transcribe_openai_audio.py \
      "$ASR_AUDIO_DIR" \
@@ -177,7 +245,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --base-url "$ASR_BASE_URL" \
      --model "$ASR_MODEL" \
      --glob "*.wav" \
-     --language ja
+     --language ja \
+     --prompt "$ASR_PROMPT"
    ```
 
    Python Whisper fallback 命令：
@@ -188,7 +257,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --out-dir "$ASR_DIR" \
      --model "$ASR_MODEL" \
      --glob "*.wav" \
-     --language ja
+     --language ja \
+     --initial-prompt "$ASR_PROMPT"
    ```
 
    如果用户明确选择 `mlx_whisper` 且当前环境已可 import，才使用 `batch_transcribe_mlx.py`。如果用户选择外部 ASR 命令或服务，按用户提供的调用方式执行，但最终仍必须产出同名 `.ja.asr.srt` 到 `$ASR_DIR`。
@@ -242,7 +312,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --api-key "$TRANSLATE_API_KEY" \
      --base-url "$TRANSLATE_BASE_URL" \
      --model "$TRANSLATE_MODEL" \
-     --chunk-size 9
+     --chunk-size 9 \
+     --chunk-mode dynamic \
+     --min-chunk-size 4 \
+     --max-chunk-size 18 \
+     --target-chars 700 \
+     --hard-chars 1100 \
+     --context-before 3 \
+     --context-after 3
    ```
 
    进度条默认启用，不需要额外参数。批量入口会显示两层进度：
@@ -259,8 +336,17 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --api-key "$TRANSLATE_API_KEY" \
      --base-url "$TRANSLATE_BASE_URL" \
      --model "$TRANSLATE_MODEL" \
-     --chunk-size 9
+     --chunk-size 9 \
+     --chunk-mode dynamic \
+     --min-chunk-size 4 \
+     --max-chunk-size 18 \
+     --target-chars 700 \
+     --hard-chars 1100 \
+     --context-before 3 \
+     --context-after 3
    ```
+
+   翻译 chunk 以语义连续性优先，字符预算只作为上限。脚本会为每个 chunk 携带前后 halo 作为上下文，但只要求模型输出目标编号。翻译结果旁会生成 `<file>.zh.srt.flags.json`，记录 `asr_uncertain`、`adult_term`、`speaker_ambiguous`、`pronoun_ambiguous`、`onomatopoeia`、`long_line`、`possible_noise`、`needs_context` 等候选风险标签，供后续 QC 聚焦使用。
 
 7. 结构校验
 
@@ -316,7 +402,13 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 9. 必须模型质检
 
-   把日文 ASR 和中文字幕成对喂给当前可用模型，让它只输出“明显问题”，不要让它大面积改风格。无台本项目必须至少跑一轮完整模型质检；若后续批量接受建议或大幅手修，还要再跑一次高风险词扫描和结构校验。
+   把日文 ASR 和中文字幕成对喂给当前配置的本地/项目 QC 模型，让它只输出“明显问题”，不要让它大面积改风格。无台本项目必须至少跑一轮完整模型质检；若后续批量接受建议或大幅手修，还要再跑一次高风险词扫描和结构校验。这里的“模型质检”必须是通过 `scripts/qc_srt_omlx.py` 调用 `QC_BASE_URL`/`QC_MODEL` 或等价的明确配置接口，不是 agent 用自身模型读一遍字幕。
+
+   进入 QC 前先解析 QC 工况模型，后续命令使用解析结果；如果本地 QC 服务不可用，停下报告或让用户改 backend/model，不要用 agent 自己的模型顶替：
+
+   ```bash
+   python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" qc --from-config
+   ```
 
    推荐使用脚本：
 
@@ -326,14 +418,17 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --zh-dir "$ZH_SRT_DIR" \
      --out "$PROJECT_ROOT/qc_report.json" \
      --api-key "$TRANSLATE_API_KEY" \
-     --base-url "$TRANSLATE_BASE_URL" \
-     --model "$TRANSLATE_MODEL" \
+     --base-url "$QC_BASE_URL" \
+     --model "$QC_MODEL" \
      --chunk-size 18 \
      --chunk-mode dynamic \
+     --qc-tier two-pass \
+     --context-halo 3 \
+     --flags-dir "$ZH_SRT_DIR" \
      --context "作品主题、角色关系、标题关键词、已知 ASR 易错词"
    ```
 
-   QC 默认会在 `$PROJECT_ROOT/qc_report_chunks/` 保存每个 chunk 的结果和 manifest，中断后再次运行会跳过签名一致的成功 chunk。动态 chunk 会自动缩小高风险、长句或密集 ASMR 内容附近的范围；需要完全固定切分时再使用 `--chunk-mode fixed`。
+   QC 默认会在 `$PROJECT_ROOT/qc_report_chunks/` 保存每个 chunk 的结果和 manifest，中断后再次运行会跳过签名一致的成功 chunk。`--qc-tier two-pass` 会先跑全量轻 QC，再根据翻译 flags、风险词、长句、残留日文/乱码等信号对高风险片段跑小 chunk 深 QC。动态 chunk 会自动缩小高风险、长句或密集 ASMR 内容附近的范围；chunk 签名以当前 chunk、halo、模型、base URL、prompt 版本、参数和上下文为准，不再因为整份文件一处修改而全量失效。需要完全固定切分时再使用 `--chunk-mode fixed`。
 
    推荐质检提示：
 
@@ -347,6 +442,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    注意：
 
    - 第一轮模型 QC 后，agent 必须处理 `qc_report.json` 中所有明确问题，并完成一轮修正；这一步不是可选项。
+   - 第一轮、第二轮以及后续任何模型 QC/精修 QC，都必须调用当前解析到的 QC backend/base URL/model。agent 自身模型只能负责编排、读报告、对照证据和标记 accept/reject/defer，不能充当 QC 模型。
    - agent 处理 QC 建议时，不能仅凭自身模型判断；必须对照日文 ASR、当前中文字幕、相邻字幕、作品标题/设定和语料库规则。agent 的职责是执行证据驱动的修正流程，而不是凭感觉重翻。
    - 模型质检建议只能作为候选，不可照单全收。
    - 长文件要小分块，避免模型卡住或上下文漂移。
@@ -387,7 +483,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --user-guidance "现在太硬了，希望更亲密、更像 ASMR 口语，但不要过度改写"
    ```
 
-   该命令会创建 `$PROJECT_ROOT/qc_refinement/round_NN/manifest.json`、`context_profile.md` 和 `next_steps.md`。`context_profile.md` 会记录自动识别到的作品情境、轨道抽样和用户引导。按 `next_steps.md` 执行：重新跑一轮聚焦 QC、生成 review items、由 agent 基于证据标记 `accept/reject/defer`、应用 accepted 项、再跑结构/风险/可读性检查。用户仍不满意时再开下一轮。
+   该命令会创建 `$PROJECT_ROOT/qc_refinement/round_NN/manifest.json`、`context_profile.md` 和 `next_steps.md`。`context_profile.md` 会记录自动识别到的作品情境、轨道抽样和用户引导。按 `next_steps.md` 执行：通过配置的本地/项目 QC 模型重新跑一轮聚焦 QC、生成 review items、由 agent 基于证据标记 `accept/reject/defer`、应用 accepted 项、再跑结构/风险/可读性检查。用户仍不满意时再开下一轮。任何追加轮次都不能跳过本地 QC 调用而改成 agent 自身模型 QC。
 
    若 agent 已经按证据确认一批明确问题，可直接编辑 `qc_review_items.json`：把明确应修的条目标为 `"decision": "accept"`，必要时把最终译文写入 `"replacement"`；误报标为 `reject`，无法判断标为 `defer`。随后先 dry-run，再正式应用：
 
@@ -420,11 +516,12 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    如果用户允许，可打开音频播放器或用本机工具抽听。无法抽听时，在交付时说明“未进行听感抽检”。
 
-11. 促销/试听处理
+11. 附加音频处理
 
-   - 促销音频单独 ASR、单独翻译、单独校对。
-   - 不要简单复制本篇字幕，因为促销可能剪辑、重录、删改句子。
-   - 促销更容易有截断句，要让中文可读，但不要补不存在的剧情。
+   - 促销/试听、EX/free talk、bonus、DLC、特典等音频默认都要单独 ASR、单独翻译、单独校对。
+   - 不要简单复制本篇字幕，因为附加音频可能剪辑、重录、删改句子，DLC/特典也可能有独立剧情。
+   - 促销/试听更容易有截断句，要让中文可读，但不要补不存在的剧情。
+   - 只有用户明确要求只翻正片、跳过促销/试听、跳过 DLC/特典或指定文件范围时，才排除对应音频；排除理由要写入项目记录或最终说明。
 
 12. 导出最终字幕
 
@@ -442,7 +539,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --json-out "$PROJECT_ROOT/export_report.json"
    ```
 
-   若有促销/试听音频，使用对应的 `promo_srt_work` 再导出到同一个 `$FINAL_SUBTITLE_DIR`：
+   若有促销/试听、EX/free talk、bonus、DLC、特典等附加音频，使用对应的附加音频 SRT 工作目录再导出到同一个 `$FINAL_SUBTITLE_DIR`：
 
    ```bash
    python scripts/export_final_subtitles.py \
@@ -466,7 +563,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 13. 更新学习库
 
-   每完成一个作品，都要从本次翻译、模型 QC、风险扫描、可读性检查、抽听和人工修正中提炼可复用经验。无台本项目尤其要区分“已确认”和“待验证”。
+   每完成一个作品，都要从本次翻译、模型 QC、风险扫描、可读性检查、抽听和人工修正中提炼可复用经验。无台本项目尤其要区分“已确认”和“待验证”。学习库维护规则见 `docs/learning_library_guide.md`；交付前必须做 learning self-check，确认没有把未证实内容写成全局规则。
 
    更新学习库：
 
@@ -475,6 +572,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    - 对不确定术语写入 `references/pending.md` 并标 `待验证`。
    - 对确认的 ASR 错词、常见误译和误报说明写入 `references/risk-notes.md`；可机械扫描的写入 `data/subtitle_risk_patterns.json`。
    - 如果后续拿到台本，回头验证并把条目标为“已验证”。
+   - 若没有更新共享 reference，必须在最终说明里写清原因：无新增可泛化规则、仅 project-only、证据不足 pending，或用户要求不全局化。
 
    同时整理风险库候选：
 
@@ -515,9 +613,10 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 - 已完成哪些目录。
 - 最终字幕格式：默认 WebVTT `.vtt`，或用户指定的 `.srt` / `both`。
-- 是否有促销。
+- 是否发现并完成了附加音频，例如促销/试听、EX/free talk、bonus、DLC、特典；如有明确跳过，说明用户指定的范围或跳过理由。
 - 模型质检是否完成，`qc_report.json` 路径在哪里。
 - `project_config.json` 路径和最终 `output_format`。
 - 是否做了听感抽检。
 - 有哪些未能完全确认的句子或轨道。
 - 本次新增了哪些语料库/风险库经验，或说明没有发现值得沉淀的新规则。
+- 学习自检摘要：哪些内容进入 project lessons，哪些进入共享 reference，哪些保持 pending/project-only，哪些候选被判定为误报或不学习。

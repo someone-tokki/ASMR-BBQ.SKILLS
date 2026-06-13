@@ -159,6 +159,7 @@ def render_context_profile(config: dict[str, Any], *, mode: str, focus: str, use
             "- 优先检查影响意义的问题：ASR 同音误识别、成人行为词错配、人称/称呼不稳、上下文逻辑断裂、字幕太机器翻译。",
             "- 不要把可接受字幕大面积改写成另一种风格；只输出明确值得修的候选项。",
             "- ASMR 字幕要保留亲密感和口语感，但不能为了润色而改变剧情或时间轴。",
+            "- 本轮模型 QC 必须调用项目配置的本地/指定 QC 模型接口；agent 自身模型只能编排、读报告和做证据审查，不能替代 QC 模型。",
         ]
     )
     if mode == "guided":
@@ -192,6 +193,7 @@ def render_context_profile(config: dict[str, Any], *, mode: str, focus: str, use
             "",
             "- Before accepting suggestions, agent should still check `references/style.md`, `references/terms.md`, and `references/risk-notes.md` when relevant.",
             "- The model QC output remains candidate evidence only; final edits require agent evidence review.",
+            "- Model QC means the configured local/project QC model call. Agent self-review is not a substitute for this round.",
             "",
         ]
     )
@@ -203,7 +205,7 @@ def build_manifest(config: dict[str, Any], round_dir: Path, *, mode: str, focus:
     asr_dir = path_value(config, "paths", "asr_dir")
     zh_srt_dir = path_value(config, "paths", "zh_srt_dir")
     qc_model = path_value(config, "models", "qc_model") or path_value(config, "models", "translate_model")
-    base_url = path_value(config, "models", "translate_base_url") or "http://127.0.0.1:8000/v1"
+    base_url = path_value(config, "models", "qc_base_url") or path_value(config, "models", "translate_base_url") or "http://127.0.0.1:8000/v1"
     qc_chunk_size = config.get("settings", {}).get("qc_chunk_size", 18)
     readability_max_cps = config.get("settings", {}).get("readability_max_cps", 10.0)
 
@@ -221,6 +223,7 @@ def build_manifest(config: dict[str, Any], round_dir: Path, *, mode: str, focus:
             "qc_model": qc_model,
             "base_url": base_url,
             "qc_chunk_size": qc_chunk_size,
+            "invocation_discipline": "Run QC through the configured local/project QC endpoint; agent self-QC is not a substitute.",
         },
         "artifacts": {
             "context_profile": (round_dir / "context_profile.md").as_posix(),
@@ -260,6 +263,8 @@ def render_next_steps(manifest: dict[str, Any]) -> str:
     return "\n".join(
         [
             "# QC Refinement Round",
+            "",
+            "Model invocation discipline: this round must call the configured local/project QC chat model via `scripts/qc_srt_omlx.py`. Agent self-review may prepare focus and accept/reject decisions, but it is not model QC. If the endpoint/model is unavailable, stop and fix the backend selection instead of substituting the agent model.",
             "",
             "1. Run focused model QC:",
             "",

@@ -35,6 +35,11 @@ def main() -> int:
     parser.add_argument("--recursive", action="store_true")
     parser.add_argument("--device", default=None, help="Optional whisper device, such as cpu or cuda.")
     parser.add_argument("--fp16", action="store_true", help="Enable fp16. Leave off for CPU/default portability.")
+    parser.add_argument(
+        "--initial-prompt",
+        default="これは日本語の成人向けASMR音声です。囁き、吐息、間、擬音が多いです。",
+        help="Initial Whisper prompt for vocabulary/tone continuity.",
+    )
     parser.add_argument("--manifest", default="", help="ASR resume manifest path. Defaults to <out-dir>/asr_manifest.json.")
     parser.add_argument("--no-resume", dest="resume", action="store_false", help="Do not skip complete existing outputs.")
     parser.add_argument("--force", action="store_true", help="Transcribe even when reusable outputs already exist.")
@@ -94,7 +99,7 @@ def main() -> int:
                 verbose=False,
                 fp16=args.fp16,
                 condition_on_previous_text=False,
-                initial_prompt="これは日本語の成人向けASMR音声です。囁き、吐息、間、擬音が多いです。",
+                initial_prompt=args.initial_prompt,
             )
             write_json_atomic(json_path, result)
             write_srt_from_result(result, srt_path)

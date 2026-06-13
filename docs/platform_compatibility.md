@@ -8,6 +8,7 @@ This project should keep subtitle checks, config records, and reports portable a
 - If a project already has usable `*.ja.asr.srt` files, missing local ASR packages should not block translation, QC, validation, or final export.
 - Use `check_environment.py --require-asr` when the current run must create new ASR files.
 - Before new ASR, run `resolve_asr_route.py`. In auto mode it resolves to `local-platform-asr-api` when a local platform endpoint supports `/audio/transcriptions`, to `local-asr-api` when a configured ASR endpoint is reachable, to `python-whisper` when the Python package is available, or to `setup_python_whisper_required` when setup is needed.
+- ASR optimizations such as VAD, overlap/stride, segment-level resume, and previous-transcript prompts are backend capabilities, not mandatory assumptions. Use them when the selected ASR tool supports them; otherwise record that they were not used. Do not install or swap ASR engines solely to obtain these options without user approval.
 - Windows and WSL default to `ollama` for translation and QC when available.
 - If `ollama` is not available, the agent should fall back to another available OpenAI-compatible backend, such as oMLX, LM Studio, a local server, or a user-approved cloud endpoint.
 - macOS can continue using oMLX or another OpenAI-compatible local API by default. On this user's machine, translation/QC should prefer `qwen3.6-27b` when that model is available.
@@ -29,6 +30,9 @@ This project should keep subtitle checks, config records, and reports portable a
 - Prefer `--translate-backend auto` in new `project_config.json` records unless the user has already chosen a concrete backend.
 - Prefer `--asr-backend auto` and `--asr-model "$ASR_MODEL"` in new `project_config.json` records unless the user has already chosen a concrete ASR backend.
 - Record ASR model and translation/QC model separately. Whisper/`large-v3` belongs to ASR; `qwen3.6-27b` is this user's preferred translation/QC chat model when available.
+- Use `$PROJECT_ROOT/model_profile.json` for user-editable stage model preferences when ASR, translation, and QC should use different models, base URLs, or backends. Resolve it with `scripts/manage_model_profile.py resolve "$PROJECT_ROOT" <stage> --from-config` before each stage.
+- `model_profile.json` is not a secrets file and does not start services, install packages, unload models, or download models. It only records preferences for the agent to apply.
+- Stage model choices are binding for workflow steps. Translation, mandatory QC, and optional QC refinement must call the resolved local/configured `/chat/completions` endpoint through the workflow scripts. If the configured service is missing, it is a setup/backend problem; it is not permission for the agent to use its own model as a hidden replacement QC model.
 - Use explicit `--asr-backend mlx_whisper` only when the project should preserve or require the MLX route and the user accepts that backend/model setup.
 - For Windows/WSL projects, `auto` should resolve to Ollama when `ollama` is installed.
 - For Windows/WSL projects without Ollama, `auto` should recommend a fallback rather than failing the workflow at the config stage.
@@ -71,11 +75,11 @@ It still must not silently install Ollama, oMLX, ASR backends, system packages, 
 
 When a one-key workflow entrypoint is added, it should follow this order:
 
-1. Read `project_config.json`.
+1. Read `project_config.json` and `model_profile.json` when present.
 2. Run `check_environment.py`.
 3. If existing `*.ja.asr.srt` files are present and valid, skip ASR backend blocking checks unless the user requested a new ASR run.
 4. If `asr_backend=auto` and new ASR is required, route with `resolve_asr_route.py`: local platform ASR API, configured local ASR API, Python Whisper, then controlled setup. Do not assume MLX or guess a local ASR binary.
 5. If `translate_backend=auto`, choose Ollama first on Windows/WSL.
 6. If Ollama is unavailable, choose the next available OpenAI-compatible backend.
 7. If no required backend is reachable, stop and report the missing service instead of guessing.
-8. Never silently switch models after subtitles have already been generated for a project; record the backend/model change in the project notes. At each stage boundary, confirm the target interface and model: ASR uses `/audio/transcriptions` with a Whisper-class model; translation/QC uses `/chat/completions` with the configured chat model.
+8. Never silently switch models after subtitles have already been generated for a project; record the backend/model change in the project notes or `model_profile.json`. At each stage boundary, confirm the target interface and model: ASR uses `/audio/transcriptions` with a Whisper-class model; translation/QC uses `/chat/completions` with the configured chat model. Second and later QC refinement rounds follow the same rule.

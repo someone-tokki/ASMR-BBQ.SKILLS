@@ -2,6 +2,8 @@
 
 用途：为 ASMR 日译中字幕提供可持续更新的风格、术语、风险和项目经验入口。详细内容拆在 `references/`，按任务需要读取，避免每次加载全部历史。
 
+学习库维护的详细规则见 `docs/learning_library_guide.md`。该文档说明项目经验、风格库、术语库、易错词/风险说明、机械扫描规则和 pending 条目的分工，以及哪些内容可以沉淀为全局规则。
+
 当前版本：2026-06-12  
 首次来源作品：`RJ01201653`，有初稿台本，含本篇、EX、促销/试听音频。
 
@@ -13,6 +15,7 @@
 - 查看过往作品经验：读 `references/project-lessons.md`。
 - 不确定条目和后续验证：读 `references/pending.md`。
 - 机械扫描规则：使用 `data/subtitle_risk_patterns.json`，由 `scripts/scan_subtitle_risks.py` 默认读取。
+- 需要维护或解释学习库时：读 `docs/learning_library_guide.md`。
 
 ## 使用规则
 

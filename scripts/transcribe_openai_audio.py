@@ -44,14 +44,17 @@ def multipart_body(fields: dict[str, str], file_field: str, file_path: Path) -> 
     return b"".join(chunks), boundary
 
 
-def transcribe(audio_path: Path, *, base_url: str, api_key: str, model: str, language: str, timeout: int) -> dict:
+def transcribe(audio_path: Path, *, base_url: str, api_key: str, model: str, language: str, timeout: int, prompt: str) -> dict:
     url = base_url.rstrip("/") + "/audio/transcriptions"
+    fields = {
+        "model": model,
+        "language": language,
+        "response_format": "verbose_json",
+    }
+    if prompt:
+        fields["prompt"] = prompt
     body, boundary = multipart_body(
-        {
-            "model": model,
-            "language": language,
-            "response_format": "verbose_json",
-        },
+        fields,
         "file",
         audio_path,
     )
@@ -91,6 +94,11 @@ def main() -> int:
     parser.add_argument("--api-key", default="local-placeholder")
     parser.add_argument("--model", default="large-v3")
     parser.add_argument("--language", default="ja")
+    parser.add_argument(
+        "--prompt",
+        default="これは日本語の成人向けASMR音声です。囁き、吐息、間、擬音が多いです。",
+        help="Optional ASR prompt for compatible /audio/transcriptions endpoints.",
+    )
     parser.add_argument("--glob", default="*.wav")
     parser.add_argument("--recursive", action="store_true")
     parser.add_argument("--timeout", type=int, default=600)
@@ -137,6 +145,7 @@ def main() -> int:
                 model=args.model,
                 language=args.language,
                 timeout=args.timeout,
+                prompt=args.prompt,
             )
             write_json_atomic(json_path, data)
             write_srt_from_result(data, srt_path)

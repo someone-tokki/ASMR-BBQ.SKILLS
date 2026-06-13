@@ -30,6 +30,8 @@ REQUIRED_SCRIPTS = [
     "transcribe_whisper.py",
     "setup_whisper_backend.py",
     "transcribe_openai_audio.py",
+    "subtitle_io.py",
+    "subtitle_chunking.py",
     "translate_srt_omlx.py",
     "batch_translate_srt_omlx.py",
     "qc_srt_omlx.py",
@@ -43,6 +45,7 @@ REQUIRED_SCRIPTS = [
     "subtitle_readability.py",
     "review_qc_report.py",
     "manage_project_config.py",
+    "manage_model_profile.py",
     "check_environment.py",
 ]
 CORE_IMPORTS = [

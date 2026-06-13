@@ -17,6 +17,13 @@ def main() -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--chunk-size", default="9")
+    parser.add_argument("--chunk-mode", default=None)
+    parser.add_argument("--min-chunk-size", default=None)
+    parser.add_argument("--max-chunk-size", default=None)
+    parser.add_argument("--target-chars", default=None)
+    parser.add_argument("--hard-chars", default=None)
+    parser.add_argument("--context-before", default=None)
+    parser.add_argument("--context-after", default=None)
     parser.add_argument("--timeout", default=None)
     parser.add_argument("--sleep", default=None)
     parser.add_argument("--script", default=str(Path(__file__).with_name("translate_srt_omlx.py")))
@@ -62,6 +69,20 @@ def main() -> int:
                 command.extend(["--model", args.model])
             if args.base_url:
                 command.extend(["--base-url", args.base_url])
+            if args.chunk_mode:
+                command.extend(["--chunk-mode", args.chunk_mode])
+            if args.min_chunk_size:
+                command.extend(["--min-chunk-size", args.min_chunk_size])
+            if args.max_chunk_size:
+                command.extend(["--max-chunk-size", args.max_chunk_size])
+            if args.target_chars:
+                command.extend(["--target-chars", args.target_chars])
+            if args.hard_chars:
+                command.extend(["--hard-chars", args.hard_chars])
+            if args.context_before:
+                command.extend(["--context-before", args.context_before])
+            if args.context_after:
+                command.extend(["--context-after", args.context_after])
             if args.timeout:
                 command.extend(["--timeout", args.timeout])
             if args.sleep:

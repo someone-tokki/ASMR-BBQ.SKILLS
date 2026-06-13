@@ -83,6 +83,8 @@ def build_config(args: argparse.Namespace, existing: dict[str, Any] | None = Non
             "translate_backend": args.translate_backend,
             "translate_base_url": args.translate_base_url,
             "translate_model": args.translate_model,
+            "qc_backend": args.qc_backend,
+            "qc_base_url": args.qc_base_url,
             "qc_model": args.qc_model,
         },
         "settings": {
@@ -123,11 +125,14 @@ def print_config_summary(data: dict[str, Any]) -> None:
     print(f"translate_backend: {models.get('translate_backend', '')}")
     print(f"translate_base_url: {models.get('translate_base_url', '')}")
     print(f"translate_model: {models.get('translate_model', '')}")
+    print(f"qc_backend: {models.get('qc_backend', '')}")
+    print(f"qc_base_url: {models.get('qc_base_url', '')}")
+    print(f"qc_model: {models.get('qc_model', '')}")
     print(f"qc_report: {data.get('artifacts', {}).get('qc_report', '')}")
 
 
 def add_common_init_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("project_root", help="Project root, normally the source ASMR work directory such as /path/to/RJ01533156.")
+    parser.add_argument("project_root", help="Project artifact root, normally /path/to/RJxxxx/subtitle_project.")
     parser.add_argument("--work-id", help="Work ID. Defaults to project_root directory name.")
     parser.add_argument("--project-type", default="unknown", choices=sorted(PROJECT_TYPES))
     parser.add_argument("--platform-profile", default="auto", choices=sorted(PLATFORM_PROFILES))
@@ -145,6 +150,8 @@ def add_common_init_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--translate-backend", default="auto", help="Backend record: auto, ollama, omlx, openai-compatible, or another project-specific value.")
     parser.add_argument("--translate-base-url", default="")
     parser.add_argument("--translate-model", default="")
+    parser.add_argument("--qc-backend", default="auto", help="QC backend record. Defaults to auto and may differ from translation.")
+    parser.add_argument("--qc-base-url", default="", help="QC chat API base URL. Defaults to translate_base_url when omitted in workflow usage.")
     parser.add_argument("--qc-model", default="")
     parser.add_argument("--output-format", default="vtt", choices=sorted(OUTPUT_FORMATS))
     parser.add_argument("--translate-chunk-size", type=int, default=9)

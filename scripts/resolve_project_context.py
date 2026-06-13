@@ -79,7 +79,7 @@ def build_context(args: argparse.Namespace) -> dict:
     elif output_root:
         project_root = output_root / work_id
     else:
-        project_root = source_project_dir
+        project_root = source_project_dir / args.project_dir_name
     final_subtitle_dir = (
         Path(args.final_subtitle_dir).expanduser()
         if args.final_subtitle_dir
@@ -100,8 +100,9 @@ def build_context(args: argparse.Namespace) -> dict:
     try:
         resolved_project_root = project_root.resolve()
         resolved_source_audio = source_audio_dir.resolve()
+        resolved_source_project = source_project_dir.resolve()
         resolved_project_root.relative_to(resolved_source_audio)
-        if resolved_project_root != resolved_source_audio:
+        if resolved_source_audio != resolved_source_project and resolved_project_root != resolved_source_audio:
             warnings.append("project_root is inside source_audio_dir; confirm the source path is the ASMR package root, not a narrow audio subfolder.")
     except (ValueError, OSError):
         pass
@@ -116,7 +117,7 @@ def build_context(args: argparse.Namespace) -> dict:
         "source_audio_dir": display_path(source_audio_dir) if source_audio_dir else "",
         "warnings": warnings,
         "notes": [
-            "By default, project_root is the source ASMR work directory. Use it for generated ASR, SRT work files, QC reports, and learning drafts.",
+            "By default, project_root is a subtitle_project folder under the source ASMR work directory. Use it for generated ASR, SRT work files, QC reports, and learning drafts.",
             "Use final_subtitle_dir for deliverable .zh.vtt/.zh.srt files. By default it is a subtitles folder under the source ASMR work directory.",
             "Do not write work artifacts into a narrow audio-only subfolder unless the user explicitly chooses that as project_root.",
             "If a parent folder is named like RJxxxx, that RJ number is the work_id even when the immediate audio folder has a generic name.",
@@ -142,7 +143,8 @@ def main() -> int:
     parser.add_argument("--source-audio-dir", help="Explicit source audio directory to record.")
     parser.add_argument("--source-project-dir", help="Explicit source ASMR work directory. Defaults to the RJ parent folder when present.")
     parser.add_argument("--output-root", help="Optional alternate output root. If set, project_root defaults to <output-root>/<work_id>.")
-    parser.add_argument("--project-root", help="Explicit project output root. Defaults to the source ASMR work directory.")
+    parser.add_argument("--project-root", help="Explicit project output root. Defaults to <source ASMR work directory>/<project-dir-name>.")
+    parser.add_argument("--project-dir-name", default="subtitle_project", help="Folder name created under the source ASMR work directory for project artifacts and intermediate files.")
     parser.add_argument("--final-subtitle-dir", help="Explicit final subtitle delivery directory.")
     parser.add_argument("--final-subtitle-dir-name", default="subtitles", help="Folder name created under the source ASMR work directory for final .zh.vtt/.zh.srt files.")
     parser.add_argument("--mkdir", action="store_true", help="Create the project_root directory.")

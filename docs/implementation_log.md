@@ -905,3 +905,327 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - This development repo is updated, but the installed Skill package has not been refreshed yet for this change.
 - Next:
   - If accepted, package/sync the Skill and optionally commit this checkpoint change.
+
+## 2026-06-13 - Project Artifact Folder Default
+
+- Current task: keep project/intermediate files from scattering in the source ASMR folder root.
+- Completed:
+  - Changed `scripts/resolve_project_context.py` so default `PROJECT_ROOT` is `$SOURCE_PROJECT_DIR/subtitle_project/`.
+  - Kept `FINAL_SUBTITLE_DIR` default as `$SOURCE_PROJECT_DIR/subtitles/` so final deliverables remain easy to find and separate from work artifacts.
+  - Added `--project-dir-name`, defaulting to `subtitle_project`, for users who want a different project artifact folder name.
+  - Updated `SKILL.md`, `docs/task_routing.md`, and both workflow docs to describe `SOURCE_PROJECT_DIR`, `PROJECT_ROOT`, and `FINAL_SUBTITLE_DIR` clearly.
+  - Updated `scripts/manage_project_config.py` help text so its positional `project_root` means the artifact root, not the source work root.
+- Modified files:
+  - `SKILL.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/task_routing.md`
+  - `docs/implementation_log.md`
+  - `scripts/resolve_project_context.py`
+  - `scripts/manage_project_config.py`
+- Validation commands:
+  - `python scripts/resolve_project_context.py /private/tmp/asmr_ctx/RJ123456/音声/track01.wav --mkdir --json`
+  - `python scripts/manage_project_config.py init /private/tmp/asmr_ctx/RJ123456/subtitle_project --work-id RJ123456 --project-type no-script --source-audio-dir /private/tmp/asmr_ctx/RJ123456/音声 --asr-dir /private/tmp/asmr_ctx/RJ123456/subtitle_project/asr_current --zh-srt-dir /private/tmp/asmr_ctx/RJ123456/subtitle_project/srt_work --final-dir /private/tmp/asmr_ctx/RJ123456/subtitles --output-format vtt --overwrite`
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+  - `rg -n "PROJECT_ROOT.*默认.*源|默认.*PROJECT_ROOT.*源|PROJECT_ROOT/subtitles|project_root is the source|normally the source ASMR work directory|默认就是源 ASMR 作品目录" SKILL.md docs scripts --glob '!docs/implementation_log.md'`
+- Validation results:
+  - Context resolution returned `PROJECT_ROOT=/private/tmp/asmr_ctx/RJ123456/subtitle_project`, `SOURCE_PROJECT_DIR=/private/tmp/asmr_ctx/RJ123456`, and `FINAL_SUBTITLE_DIR=/private/tmp/asmr_ctx/RJ123456/subtitles`.
+  - Config initialization wrote `/private/tmp/asmr_ctx/RJ123456/subtitle_project/project_config.json`.
+  - Syntax checks passed.
+  - `git diff --check` passed.
+  - Stale wording scan showed only acceptable references to `SOURCE_PROJECT_DIR` as the source work directory and final subtitles under the source work directory.
+- Open questions:
+  - Existing projects with root-level artifacts may need a one-time manual move or compatibility note if the user wants cleanup.
+- Next:
+  - Run syntax/diff checks, then package/sync only if requested.
+
+## 2026-06-13 - Chunk And QC Performance Optimization
+
+- Current task: improve translation/QC chunking for speed and cache reuse without losing ASMR semantic continuity.
+- Completed:
+  - Added `scripts/subtitle_chunking.py` for shared semantic chunk planning, risk scoring, halo context, chunk summaries, and index-based chunk reconstruction.
+  - Updated `scripts/translate_srt_omlx.py`:
+    - Added `--chunk-mode dynamic`, `--target-chars`, `--hard-chars`, `--min-chunk-size`, `--max-chunk-size`, `--context-before`, and `--context-after`.
+    - Added halo payloads with `context_before`, `target_items`, and `context_after`; prompts instruct the model to output target indexes only.
+    - Added optional translation flags: `asr_uncertain`, `adult_term`, `speaker_ambiguous`, `pronoun_ambiguous`, `onomatopoeia`, `long_line`, `possible_noise`, and `needs_context`.
+    - Added `<output>.flags.json`, `<output>.translate_manifest.json`, and `--plan-only`.
+  - Updated `scripts/batch_translate_srt_omlx.py` to pass dynamic chunk and halo options to the single-file translator.
+  - Updated `scripts/qc_srt_omlx.py`:
+    - Added `--qc-tier standard|light|deep|two-pass`.
+    - Added `--context-halo`, `--flags-dir`, and deep-risk neighbor windows.
+    - Implemented two-pass QC planning: full light QC plus focused deep QC on risk windows selected from translation flags, risk terms, long lines, residual Japanese/garbage text, and neighboring context.
+    - Changed QC cache signatures to chunk-local signatures using target items, halo items, flags, model, base URL, prompt version, settings, and context rather than whole-file fingerprints.
+    - Reuses existing manifest chunk boundaries by default when possible.
+  - Updated `scripts/check_environment.py` to require `subtitle_io.py` and `subtitle_chunking.py`.
+  - Updated `SKILL.md`, `docs/task_routing.md`, and both workflow docs with semantic chunking, halo, translation flags, two-pass QC, and chunk-local cache rules.
+- Modified files:
+  - `SKILL.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/task_routing.md`
+  - `docs/implementation_log.md`
+  - `scripts/subtitle_chunking.py`
+  - `scripts/translate_srt_omlx.py`
+  - `scripts/batch_translate_srt_omlx.py`
+  - `scripts/qc_srt_omlx.py`
+  - `scripts/check_environment.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+  - `python scripts/translate_srt_omlx.py generated_subtitles/RJ01533156/asr_large_v3_4bit/1_プロローグ.ja.asr.srt /private/tmp/translate_plan2/1_プロローグ.zh.srt --api-key local-placeholder --base-url http://127.0.0.1:9/v1 --model qwen3.6-27b --chunk-size 9 --chunk-mode dynamic --min-chunk-size 4 --max-chunk-size 18 --target-chars 700 --hard-chars 1100 --context-before 3 --context-after 3 --plan-only`
+  - `python scripts/qc_srt_omlx.py --asr-dir generated_subtitles/RJ01533156/asr_large_v3_4bit --zh-dir generated_subtitles/RJ01533156/音声 --out /private/tmp/qc_two_pass_report3.json --api-key local-placeholder --base-url http://127.0.0.1:9/v1 --model qwen3.6-27b --chunk-size 18 --chunk-mode dynamic --qc-tier two-pass --context-halo 3 --flags-dir generated_subtitles/RJ01533156/音声 --plan-only`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+- Validation results:
+  - Syntax checks passed.
+  - `git diff --check` passed.
+  - Translation `--plan-only` wrote a dynamic manifest with target indexes and halo indexes without model/API calls.
+  - QC `--plan-only --qc-tier two-pass` wrote a manifest with light and deep passes, target indexes, halo indexes, chunk-local signatures, and no model/API calls.
+  - Deep QC windows are split by original subtitle continuity rather than combining distant risk spans into one chunk.
+  - Environment check found `subtitle_chunking.py` and reported `WARN` only for expected missing/optional config or API checks.
+- Open questions:
+  - Parallel workers for translation/QC are still not implemented; this change prepares stable chunk/cache behavior first.
+  - Existing installed Skill has not been refreshed from this workspace change.
+- Next:
+  - If accepted, commit/package/sync the Skill after confirming no other process is currently relying on the installed directory.
+
+## 2026-06-13 - Full Audio Scope Rule
+
+- Current task: prevent the agent from skipping audio before translation just because it looks like promo, trial, DLC, bonus, EX, or lacks a main-story number.
+- Completed:
+  - Updated `SKILL.md` so ASR/translation must scan the source work folder for all target audio before deciding scope.
+  - Clarified that translation scope defaults to every discovered audio target unless the user explicitly asks for main-story-only, selected files only, or skipping promo/trial/DLC/bonus material.
+  - Updated `docs/task_routing.md` to treat promo/trial/DLC/EX/bonus audio as equal target audio and to record explicit scope narrowing in project notes.
+  - Updated both workflow docs so classification is used for organization and context, not for default exclusion.
+  - Updated final delivery wording to report all attached/additional audio status, not only promo status.
+- Modified files:
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `rg -n "是否有促销|本篇与促销|促销/试听音频|只翻正片|跳过促销|跳过 DLC|目标音频|附加音频" SKILL.md docs/task_routing.md docs/asmr_subtitle_workflow_no_script.md docs/asmr_subtitle_workflow_with_script.md`
+  - `git diff --check`
+  - `python -B -m py_compile scripts/*.py`
+- Validation results:
+  - Scope wording now explicitly covers all target audio and explicit user-only exclusions.
+  - `git diff --check` passed.
+  - Script syntax checks passed.
+- Open questions:
+  - A dedicated audio inventory/report script could make this rule more enforceable later.
+- Next:
+  - Commit/package/sync only when the user wants the installed Skill refreshed.
+
+## 2026-06-13 - Stage Model Profile
+
+- Current task: let users choose different models/backends/base URLs for ASR, translation, and QC without hard-coding stage choices in workflow docs.
+- Completed:
+  - Added `scripts/manage_model_profile.py` to create, edit, show, and resolve `$PROJECT_ROOT/model_profile.json`.
+  - Defined `model_profile.json` as a user-editable stage preference file, not a secrets file and not an automatic service/model installer.
+  - Supported separate `asr`, `translate`, and `qc` stage entries with `backend`, `base_url`, `model`, `interface`, and notes.
+  - Added `set-stage` for task-specific overrides such as using a faster QC model while keeping translation on `qwen3.6-27b`.
+  - Added `resolve <stage> --from-config` so the agent can combine `model_profile.json` with `project_config.json` before each stage.
+  - Extended `scripts/manage_project_config.py` with `qc_backend` and `qc_base_url` so QC no longer has to share translation base URL/model.
+  - Added `manage_model_profile.py` to `scripts/check_environment.py` required script checks.
+  - Updated `SKILL.md`, both workflow docs, `docs/task_routing.md`, and `docs/platform_compatibility.md`.
+- Modified files:
+  - `SKILL.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/task_routing.md`
+  - `docs/platform_compatibility.md`
+  - `docs/implementation_log.md`
+  - `scripts/manage_model_profile.py`
+  - `scripts/manage_project_config.py`
+  - `scripts/check_environment.py`
+- Validation commands:
+  - `python scripts/manage_project_config.py init /private/tmp/model_profile_fixture/subtitle_project --work-id RJ999999 --project-type no-script --source-audio-dir /private/tmp/model_profile_fixture/音声 --asr-dir /private/tmp/model_profile_fixture/subtitle_project/asr_current --zh-srt-dir /private/tmp/model_profile_fixture/subtitle_project/srt_work --final-dir /private/tmp/model_profile_fixture/subtitles --asr-backend auto --asr-model large-v3 --translate-backend auto --translate-base-url http://127.0.0.1:8000/v1 --translate-model qwen3.6-27b --qc-backend auto --qc-base-url http://127.0.0.1:1234/v1 --qc-model fast-qc-model --output-format vtt --overwrite`
+  - `python scripts/manage_model_profile.py init /private/tmp/model_profile_fixture/subtitle_project --from-config --overwrite`
+  - `python scripts/manage_model_profile.py resolve /private/tmp/model_profile_fixture/subtitle_project asr --from-config`
+  - `python scripts/manage_model_profile.py resolve /private/tmp/model_profile_fixture/subtitle_project translate --from-config`
+  - `python scripts/manage_model_profile.py resolve /private/tmp/model_profile_fixture/subtitle_project qc --from-config`
+  - `python scripts/manage_model_profile.py set-stage /private/tmp/model_profile_fixture/subtitle_project qc --backend lmstudio --base-url http://127.0.0.1:1234/v1 --model qwen-qc-fast --interface /chat/completions`
+  - `python scripts/manage_model_profile.py resolve /private/tmp/model_profile_fixture/subtitle_project qc`
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+- Validation results:
+  - `project_config.json` records independent QC backend/base URL/model fields.
+  - `model_profile.json --from-config` correctly resolved ASR as `large-v3`, translation as `qwen3.6-27b` at `http://127.0.0.1:8000/v1`, and QC as `fast-qc-model` at `http://127.0.0.1:1234/v1`.
+  - `set-stage` successfully changed QC to `lmstudio` / `qwen-qc-fast`.
+  - Syntax checks passed.
+  - `git diff --check` passed.
+- Open questions:
+  - Existing workflow commands still show shell variables; agents must use `manage_model_profile.py resolve` results to set those variables before each stage.
+- Next:
+  - Commit/package/sync only when the user wants the installed Skill refreshed.
+
+## 2026-06-13 - Non-Negotiable Quality Floor
+
+- Current task: record hard quality requirements that must not be broken by chunk, cache, speed, or automation optimizations.
+- Completed:
+  - Added a non-negotiable quality floor to `SKILL.md`:
+    - Keep SRT indexes, order, start times, and end times unchanged.
+    - Translation output must cover every target subtitle index exactly once.
+    - Context halo items are understanding-only and must not enter output or QC targets.
+    - QC suggestions are candidates only; agent decides changes after QC using source evidence and context.
+    - ASMR semantics, role relationships, action continuity, speaker turns, whispers, breaths, and onomatopoeia rhythm outrank mechanical chunk compression.
+    - Cached chunks may only be reused when content, target indexes, halo context, model, base URL, prompt/schema version, chunk settings, and context/profile signature match.
+  - Mirrored the rule in `docs/task_routing.md` and both workflow docs.
+  - Updated `scripts/translate_srt_omlx.py` prompt wording so halo context cannot be emitted as output, and added a final missing-index check before writing SRT.
+  - Updated `scripts/qc_srt_omlx.py` prompt wording so QC output is explicitly candidate advice and does not directly auto-edit subtitles.
+- Modified files:
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+  - `scripts/translate_srt_omlx.py`
+  - `scripts/qc_srt_omlx.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - `git diff --check` passed.
+  - Prompt wording scan confirmed translation halo is context-only and QC suggestions are candidate-only.
+- Open questions:
+  - None.
+- Next:
+  - Keep this change in the next commit/package batch.
+
+## 2026-06-13 - ASR Optimization Guidance
+
+- Current task: add cautious ASR optimization guidance without pretending a full segmented VAD/stride ASR pipeline is already implemented.
+- Completed:
+  - Added ASR optimization rules to `SKILL.md`, `docs/task_routing.md`, both workflow docs, and `docs/platform_compatibility.md`.
+  - Documented no-SE preference, backend-supported VAD for long silence/pure ambience, overlap/stride for long-audio segmentation, previous-transcript prompt/context, and segment-level resume expectations.
+  - Added guardrails that VAD must not remove low-volume whispers, valid dialogue inside breaths, important pauses, or quiet speech.
+  - Clarified that ASMR breaths, ear-licking, kissing, and repeated sound effects may be simplified later in subtitles and should not become meaningless repeated text walls.
+  - Added `--initial-prompt` to `scripts/transcribe_whisper.py`.
+  - Added `--prompt` to `scripts/transcribe_openai_audio.py` for compatible OpenAI-style audio transcription endpoints.
+- Modified files:
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/platform_compatibility.md`
+  - `docs/implementation_log.md`
+  - `scripts/transcribe_whisper.py`
+  - `scripts/transcribe_openai_audio.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/transcribe_whisper.py --help`
+  - `python scripts/transcribe_openai_audio.py --help`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - `transcribe_whisper.py --help` shows `--initial-prompt`.
+  - `transcribe_openai_audio.py --help` shows `--prompt`.
+  - `git diff --check` passed.
+- Open questions:
+  - A real segmented VAD/stride ASR runner is still future work.
+- Next:
+  - Keep this change in the next commit/package batch.
+
+## 2026-06-13 - Local Model QC Invocation Discipline
+
+- Current task: make it explicit that mandatory QC and later QC refinement rounds must use the configured local/project model endpoint, not the agent's own model.
+- Completed:
+  - Strengthened `SKILL.md` stage/model rules and QC policy: translation, mandatory QC, and optional QC refinement must call the resolved configured endpoint through scripts; agent self-QC is not a substitute.
+  - Updated both workflow docs so QC resolves the QC stage model before running and uses `QC_BASE_URL`/`QC_MODEL` in QC commands.
+  - Added the same boundary to `docs/task_routing.md` and `docs/platform_compatibility.md`.
+  - Updated `scripts/manage_qc_refinement.py` so generated `context_profile.md`, `manifest.json`, and `next_steps.md` carry the local QC invocation rule.
+  - Fixed QC refinement manifest base URL selection to prefer `qc_base_url` before falling back to `translate_base_url`.
+- Modified files:
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/platform_compatibility.md`
+  - `docs/implementation_log.md`
+  - `scripts/manage_qc_refinement.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `git diff --check`
+  - `rg -n "agent 自身模型|self-QC|QC_BASE_URL|QC_MODEL|invocation discipline|本地模型调用纪律|scripts/qc_srt_omlx.py" SKILL.md docs scripts/manage_qc_refinement.py`
+- Validation results:
+  - Syntax checks passed.
+  - `git diff --check` passed.
+  - Keyword scan confirms the rule appears in `SKILL.md`, both workflow docs, task routing, platform compatibility, and generated QC refinement guidance.
+- Open questions:
+  - None.
+- Next:
+  - Run validation and keep this change in the next commit/package batch.
+
+## 2026-06-13 - User-Facing Skill Guide
+
+- Current task: add a user-facing guide that explains useful Skill capabilities users may not know to request.
+- Completed:
+  - Added `docs/user_guide.md` with practical request examples for starting a project, choosing translation scope, output format, model/backend selection, QC refinement guidance, read-only checks, style preferences, learning-library updates, DLsite context, and quality floor rules.
+  - Updated `SKILL.md` load order so agents can point users to `docs/user_guide.md` when asked how to use the Skill.
+  - Updated packaging boundary to include `docs/user_guide.md` in formal Skill packages.
+- Modified files:
+  - `docs/user_guide.md`
+  - `SKILL.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `git diff --check`
+  - `rg -n "docs/user_guide.md|用户使用指南|指定翻译范围|guided QC|质量底线" SKILL.md docs/user_guide.md`
+- Validation results:
+  - `git diff --check` passed.
+  - Keyword scan confirmed `docs/user_guide.md` is linked from `SKILL.md` and covers scope selection, guided QC, and quality floor examples.
+- Open questions:
+  - None.
+- Next:
+  - Run validation and keep this guide in the next commit/package batch.
+
+## 2026-06-13 - Learning Library Maintenance Guide
+
+- Current task: add a unified explanation for how the Skill's learning libraries should be updated.
+- Completed:
+  - Added `docs/learning_library_guide.md` to define the purpose of the learning library, file responsibilities, update timing, evidence levels, write-routing rules, anti-pollution rules, and user request examples.
+  - Linked the guide from `docs/asmr_translation_corpus.md` so the corpus index points to the detailed maintenance rules.
+  - Updated `SKILL.md` load order so agents read `docs/learning_library_guide.md` for learning-loop maintenance or user questions about what gets learned.
+  - Updated `docs/user_guide.md` so users know they can restrict learning to project-only, pending, or non-global updates.
+- Modified files:
+  - `docs/learning_library_guide.md`
+  - `docs/asmr_translation_corpus.md`
+  - `docs/user_guide.md`
+  - `SKILL.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `git diff --check`
+  - `rg -n "learning_library_guide|学习库维护|证据等级|project-only|pending|subtitle_risk_patterns" SKILL.md docs/asmr_translation_corpus.md docs/user_guide.md docs/learning_library_guide.md`
+- Validation results:
+  - `git diff --check` passed.
+  - Keyword scan confirmed the guide is linked from `SKILL.md`, `docs/asmr_translation_corpus.md`, and `docs/user_guide.md`, and covers evidence levels, pending/project-only handling, and mechanical risk patterns.
+- Open questions:
+  - None.
+- Next:
+  - Run validation and include the guide in the next commit/package batch.
+
+## 2026-06-13 - Learning Self-Check Requirement
+
+- Current task: ensure agents using the Skill have a mandatory, reasonable self-learning summary mechanism.
+- Completed:
+  - Strengthened `SKILL.md` so the learning loop is a required finalization step for completed works, with a concise learning summary before final response.
+  - Added candidate lesson classification to finalization: `confirmed`, `project-only`, `pending`, or `false-positive`.
+  - Added a learning self-check to `docs/learning_library_guide.md` so agents verify project lessons, shared reference promotion, pending/project-only decisions, false positives, and user non-globalization requests.
+  - Updated both workflow docs so step 13 requires reading the learning guide, doing learning self-check, and explaining when no shared reference was updated.
+- Modified files:
+  - `SKILL.md`
+  - `docs/learning_library_guide.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `git diff --check`
+  - `rg -n "learning self-check|学习自检|project-only|false-positive|未全局化|无新增可泛化规则" SKILL.md docs/learning_library_guide.md docs/asmr_subtitle_workflow_no_script.md docs/asmr_subtitle_workflow_with_script.md`
+- Validation results:
+  - `git diff --check` passed.
+  - Keyword scan confirmed the self-check requirement appears in `SKILL.md`, `docs/learning_library_guide.md`, and both workflow docs.
+- Open questions:
+  - None.
+- Next:
+  - Validate and include in the next commit/package batch.
