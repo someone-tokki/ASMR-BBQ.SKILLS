@@ -108,10 +108,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --qc-base-url "$QC_BASE_URL" \
      --qc-model "$QC_MODEL" \
      --confirmed \
+     --confirmation-source explicit_user \
+     --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
+     --preflight-questions-presented \
+     --audio-scope-report "$PROJECT_ROOT/audio_scope_report.json" \
      --overwrite
    ```
 
-   如果用户选择全部，用 `--scope all`；如果指定具体音频，用 `--scope selected_files --selected-audio-file "<file>"`。后续每个模型阶段前都要硬检查：
+   如果用户选择全部，用 `--scope all` 并保留音频扫描报告；如果指定具体音频，用 `--scope selected_files --selected-audio-file "<file>"`。auto mode 不等于用户确认；只有用户明确说“全部按默认/你决定/不用问”时，才可改用 `--confirmation-source user_default_authorized --confirmation-text "<用户授权原话或摘要>"`。后续每个模型阶段前都要硬检查：
 
    ```bash
    python scripts/check_preflight.py "$PROJECT_ROOT" --stage asr
@@ -327,6 +331,19 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    然后对 `$PROJECT_ROOT/channel_recovery/$TRACK_STEM/clips` 使用当前解析到的 ASR backend/model 转写。补漏结果只作为候选；不得自动覆盖主 `.ja.asr.srt` 或最终字幕。若确认需要并入主时间轴，先记录 review 决定，再重跑结构校验、翻译和 QC。
 
+5. 修轻微 ASR 时间重叠
+
+   Whisper ASR 有时会产生很小的时间重叠。先跑结构校验；如果只是轻微 overlap，可在翻译前做保守修复：
+
+   ```bash
+   python scripts/repair_asr_timestamps.py "$ASR_DIR" \
+     --mode fix \
+     --backup-dir "$PROJECT_ROOT/asr_timestamp_backups" \
+     --json-out "$PROJECT_ROOT/asr_timestamp_repair_report.json"
+   ```
+
+   这个工具只允许自动修很小的 overlap，做法是把前一条字幕结束时间裁到后一条开始时间；它不会改编号、顺序或文本内容。中等和严重 overlap 只报告，不自动修。若已经存在对应 `.zh.srt`，默认会阻止只修 JA，避免破坏 JA/ZH 时间轴一致性。修完后必须再次跑结构校验。
+
    无论使用哪种 ASR，输出合约固定为 `$ASR_DIR/<track>.ja.asr.srt`，可选保留 `$ASR_DIR/<track>.ja.asr.json`。本地 API ASR 命令：
 
    ```bash
@@ -341,7 +358,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --model "$ASR_MODEL" \
      --glob "*.wav" \
      --language ja \
-     --prompt "$ASR_PROMPT"
+     --prompt "$ASR_PROMPT" \
+     --project-root "$PROJECT_ROOT"
    ```
 
    Python Whisper fallback 命令：
@@ -353,6 +371,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --model "$ASR_MODEL" \
      --glob "*.wav" \
      --language ja \
+     --project-root "$PROJECT_ROOT" \
      --initial-prompt "$ASR_PROMPT"
    ```
 
@@ -398,7 +417,17 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    export ZH_DIR="$FINAL_SUBTITLE_DIR"
    ```
 
-   进入翻译前确认阶段切换：ASR 阶段已结束、`.ja.asr.srt` 已写入，当前服务已切换到翻译/QC chat 模型，`TRANSLATE_MODEL` 指向 chat 模型而不是 Whisper。若本地平台不能同时常驻 ASR 与翻译模型，先释放/卸载/切换 ASR 模型，再调用 `/chat/completions`。
+   进入翻译前确认阶段切换：ASR 阶段已结束、`.ja.asr.srt` 已写入，当前服务已切换到翻译 chat 模型，`TRANSLATE_MODEL` 指向 chat 模型而不是 Whisper。若本地平台不能同时常驻 ASR 与翻译模型，先释放/卸载/切换 ASR 模型。随后用阶段检查确认当前模型真的能调用：
+
+   ```bash
+   python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate \
+     --previous-stage asr \
+     --from-config \
+     --api-key "$TRANSLATE_API_KEY" \
+     --json-out "$PROJECT_ROOT/model_stage_translate.json"
+   ```
+
+   如果这里失败，先处理本地模型服务，不要直接进入翻译。
 
    ```bash
    python scripts/batch_translate_srt_omlx.py \
@@ -414,7 +443,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --target-chars 700 \
      --hard-chars 1100 \
      --context-before 3 \
-     --context-after 3
+     --context-after 3 \
+     --project-root "$PROJECT_ROOT"
    ```
 
    进度条默认启用，不需要额外参数。批量入口会显示两层进度：
@@ -438,7 +468,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --target-chars 700 \
      --hard-chars 1100 \
      --context-before 3 \
-     --context-after 3
+     --context-after 3 \
+     --project-root "$PROJECT_ROOT"
    ```
 
    翻译 chunk 以语义连续性优先，字符预算只作为上限。脚本会为每个 chunk 携带前后 halo 作为上下文，但只要求模型输出目标编号。翻译结果旁会生成 `<file>.zh.srt.flags.json`，记录 `asr_uncertain`、`adult_term`、`speaker_ambiguous`、`pronoun_ambiguous`、`onomatopoeia`、`long_line`、`possible_noise`、`needs_context` 等候选风险标签，供后续 QC 聚焦使用。
@@ -505,6 +536,18 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" qc --from-config
    ```
 
+   随后必须做 QC 阶段模型就绪检查，尤其是翻译模型和 QC 模型不同时：
+
+   ```bash
+   python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc \
+     --previous-stage translate \
+     --from-config \
+     --api-key "$TRANSLATE_API_KEY" \
+     --json-out "$PROJECT_ROOT/model_stage_qc.json"
+   ```
+
+   若返回 `FAIL`，不要运行 QC。HTTP 500 常见原因是上一阶段翻译模型仍占用显存/内存、QC 模型加载失败或过大、本地后端不支持按请求里的 `model` 自动热切换、模型名不匹配，或服务需要手动重载/重启。先让用户释放/卸载上一模型或在本地后端切到 QC 模型，再重跑阶段检查。
+
    推荐使用脚本：
 
    ```bash
@@ -520,7 +563,8 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --qc-tier two-pass \
      --context-halo 3 \
      --flags-dir "$ZH_SRT_DIR" \
-     --context "作品主题、角色关系、标题关键词、已知 ASR 易错词"
+     --context "作品主题、角色关系、标题关键词、已知 ASR 易错词" \
+     --project-root "$PROJECT_ROOT"
    ```
 
    QC 默认会在 `$PROJECT_ROOT/qc_report_chunks/` 保存每个 chunk 的结果和 manifest，中断后再次运行会跳过签名一致的成功 chunk。`--qc-tier two-pass` 会先跑全量轻 QC，再根据翻译 flags、风险词、长句、残留日文/乱码等信号对高风险片段跑小 chunk 深 QC。动态 chunk 会自动缩小高风险、长句或密集 ASMR 内容附近的范围；chunk 签名以当前 chunk、halo、模型、base URL、prompt 版本、参数和上下文为准，不再因为整份文件一处修改而全量失效。需要完全固定切分时再使用 `--chunk-mode fixed`。

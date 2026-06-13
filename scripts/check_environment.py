@@ -35,6 +35,8 @@ REQUIRED_SCRIPTS = [
     "scan_audio_scope.py",
     "prepare_run_profile.py",
     "check_preflight.py",
+    "preflight_gate.py",
+    "repair_asr_timestamps.py",
     "translate_srt_omlx.py",
     "batch_translate_srt_omlx.py",
     "qc_srt_omlx.py",
@@ -52,6 +54,7 @@ REQUIRED_SCRIPTS = [
     "review_qc_report.py",
     "manage_project_config.py",
     "manage_model_profile.py",
+    "prepare_model_stage.py",
     "check_environment.py",
 ]
 CORE_IMPORTS = [

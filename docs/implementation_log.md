@@ -1230,6 +1230,98 @@ Do not record private paths, API keys, model secrets, or large command logs here
 - Next:
   - Validate and include in the next commit/package batch.
 
+## 2026-06-14 - Model Stage Readiness Gate
+
+- Current task: prevent translation-to-QC model switches from failing obscurely with local HTTP 500 errors.
+- Completed:
+  - Added `scripts/prepare_model_stage.py` to resolve the target `translate` or `qc` stage from `model_profile.json`, confirmed `run_profile.json`, and `project_config.json`.
+  - The new script checks `/models` and sends a tiny `/chat/completions` probe before the real stage call.
+  - When moving between different stage models, it warns that the previous model may need to be released/unloaded before the next model can load.
+  - HTTP 500 diagnostics now explicitly list likely local causes: previous model still occupying memory, target model too large or failed to load, backend cannot hot-switch, model id mismatch, or service needing reload/restart.
+  - Enhanced `scripts/translate_srt_omlx.py` HTTP errors; `qc_srt_omlx.py` benefits because it reuses the same request helper.
+  - Added the new script to `scripts/check_environment.py`.
+  - Updated `SKILL.md`, platform docs, preflight docs, both workflow docs, and user guide.
+- Modified files:
+  - `scripts/prepare_model_stage.py`
+  - `scripts/translate_srt_omlx.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/platform_compatibility.md`
+  - `docs/preflight_confirmation.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/user_guide.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/prepare_model_stage.py --help`
+  - config fixture checks with `--skip-api`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - `prepare_model_stage.py --help` works.
+  - Fixture with `translate=qwen3.7-27b` and `qc=qwen3.6-35B-A3B` returned `WARN` and explicitly warned that the previous model may need release/unload before QC.
+  - Fixture with default same translate/QC model returned same-model stage switch `OK` plus skipped API `WARN`.
+  - `check_environment.py --dry-run-install --skip-api` detects `prepare_model_stage.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Future enhancement: backend-specific safe unload/load adapters if oMLX, LM Studio, or Ollama exposes reliable model switching APIs.
+- Next:
+  - Run validation and include in the next commit/package batch.
+
+## 2026-06-14 - Mandatory Preflight Hard Gate
+
+- Current task: prevent auto-mode agents from skipping mandatory user confirmation before ASR, translation, or QC.
+- Completed:
+  - Added `scripts/preflight_gate.py` as a shared production-script gate.
+  - Updated `scripts/prepare_run_profile.py` so `--confirmed` requires `--confirmation-source`; confirmed profiles now record confirmation source/text, who confirmed, whether questions were presented, and audio scope report/summary.
+  - Updated `scripts/check_preflight.py` to reject missing confirmation source, missing presented-question marker, missing scope evidence for `scope=all`, incomplete stage model settings, and ASR-looking models in translation/QC stages.
+  - Connected the gate to `transcribe_openai_audio.py`, `transcribe_whisper.py`, `translate_srt_omlx.py`, `batch_translate_srt_omlx.py`, and `qc_srt_omlx.py`.
+  - Batch translation now forwards `--project-root` and preflight options to per-file translation subprocesses.
+  - Added `preflight_gate.py` to environment checks.
+  - Updated `SKILL.md`, `docs/preflight_confirmation.md`, both workflow docs, and `docs/user_guide.md` to state that auto mode is not user confirmation and formal workflow commands must pass `--project-root`.
+- Modified files:
+  - `scripts/preflight_gate.py`
+  - `scripts/prepare_run_profile.py`
+  - `scripts/check_preflight.py`
+  - `scripts/transcribe_openai_audio.py`
+  - `scripts/transcribe_whisper.py`
+  - `scripts/translate_srt_omlx.py`
+  - `scripts/batch_translate_srt_omlx.py`
+  - `scripts/qc_srt_omlx.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/preflight_confirmation.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/user_guide.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/prepare_run_profile.py --help`
+  - `python scripts/check_preflight.py --help`
+  - fixture: old `--confirmed` without confirmation source is rejected
+  - fixture: bad `run_profile.json` is rejected by `check_preflight.py`
+  - fixture: translation script with bad `--project-root` is blocked before reading input
+  - fixture: valid confirmed profile passes `check_preflight.py`
+  - fixture: translation script with valid profile passes the gate and reaches normal input handling
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - Help output works.
+  - Old-style confirmed profile is rejected with a clear `--confirmation-source` error.
+  - Bad profile is blocked with messages including `auto mode is not user confirmation`.
+  - Valid profile passes the gate.
+  - Translation script with valid profile proceeds beyond preflight; the test then fails only because the fixture input SRT intentionally does not exist.
+  - Environment check detects `preflight_gate.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Future packaging should ensure installed skill includes this gate before retesting in ClaudeCode auto mode.
+- Next:
+  - Run final environment/diff checks and include in the next commit/package batch.
+
 ## 2026-06-13 - Preflight Gate And Performance Batches
 
 - Current task: implement the four planned improvement batches: mandatory Preflight, translation performance defaults/presets, translation chunk cache/profile/workers, and conservative ASR prepared cache.
@@ -1283,6 +1375,45 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - ASR prepared cache currently creates segment plans and optional normalization; true segment ASR execution/VAD integration should remain conservative and backend-specific.
 - Next:
   - Run on a real ASMR sample to tune preset sizes, QC model split, and profile thresholds.
+
+## 2026-06-14 - ASR Timestamp Repair
+
+- Current task: add a conservative ASR timestamp repair stage for Whisper-style small subtitle overlaps.
+- Completed:
+  - Added `scripts/repair_asr_timestamps.py` with `report` and `fix` modes.
+  - The repair tool only auto-fixes small overlaps by clipping the previous subtitle end to the current subtitle start; it keeps subtitle index order and text unchanged.
+  - Moderate and severe overlaps remain report-only; invalid ranges also remain review-only.
+  - When matching `.zh.srt` files already exist, fix mode blocks JA-only repair by default to preserve JA/ZH timeline alignment.
+  - Updated `SKILL.md`, both workflow docs, `docs/task_routing.md`, `docs/user_guide.md`, and `scripts/check_environment.py`.
+- Modified files:
+  - `scripts/repair_asr_timestamps.py`
+  - `scripts/check_environment.py`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/user_guide.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - fixture: `minor.ja.asr.srt` report mode
+  - fixture: `minor.ja.asr.srt` fix mode with backup dir
+  - fixture: `moderate.ja.asr.srt` report mode
+  - fixture: `severe.ja.asr.srt` report mode
+  - fixture: `blocked.ja.asr.srt` fix mode with matching `.zh.srt`
+  - `python scripts/validate_subtitles.py /private/tmp/asr_repair_fixture/asr/minor.ja.asr.srt`
+  - `python scripts/validate_subtitles.py /private/tmp/asr_repair_fixture/asr/moderate.ja.asr.srt`
+- Validation results:
+  - Syntax checks passed.
+  - `80ms` overlap was reported as auto-fixable and then fixed successfully.
+  - The repaired minor-overlap file passed `validate_subtitles.py`.
+  - `300ms` overlap stayed report-only and still failed validation until manual review.
+  - `1100ms` overlap returned an error and was not auto-fixed.
+  - Existing matching `.zh.srt` correctly blocked JA-only repair in fix mode.
+- Open questions:
+  - Real ASMR samples may suggest tuning the default `--max-auto-overlap-ms` or `--min-duration-ms` thresholds.
+- Next:
+  - Run the new repair stage on a real Whisper ASR sample before packaging the next skill release.
 
 ## 2026-06-13 - Stereo Channel Recovery ASR
 

@@ -13,6 +13,8 @@ from typing import Any
 
 from tqdm import tqdm
 
+from preflight_gate import add_preflight_args, enforce_preflight
+
 
 PRESET_DEFAULTS = {
     "safe": {
@@ -97,6 +99,12 @@ def build_command(args: argparse.Namespace, input_srt: Path, output_srt: Path, p
         command.append("--force")
     if args.plan_only:
         command.append("--plan-only")
+    if args.project_root:
+        command.extend(["--project-root", args.project_root])
+    if args.no_preflight_check:
+        command.append("--no-preflight-check")
+    if args.require_preflight:
+        command.append("--require-preflight")
     return command
 
 
@@ -145,7 +153,9 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="Rerun files/chunks even if outputs or caches exist.")
     parser.add_argument("--plan-only", action="store_true", help="Build per-file translation manifests without calling the model.")
     parser.add_argument("--script", default=str(Path(__file__).with_name("translate_srt_omlx.py")))
+    add_preflight_args(parser)
     args = parser.parse_args()
+    enforce_preflight(args, "translate")
     apply_preset(args)
 
     input_dir = Path(args.input_dir)

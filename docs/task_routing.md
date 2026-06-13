@@ -14,6 +14,7 @@
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
 - 翻译和 QC chunk 以语义连续性优先，字符/token 预算只作为上限。优先使用动态 chunk 和 halo 上下文；halo 只用于理解，不要求模型输出上下文编号。
 - 质量底线不可被任何 chunk、缓存、速度或自动化优化破坏：保持 SRT 编号、顺序、开始时间、结束时间不变；翻译必须覆盖所有目标编号；context halo 不能进入输出；QC 建议只能作为候选；ASMR 语义、角色关系、动作连续性优先于机械压缩；缓存只可复用到内容、模型、prompt/schema、参数和上下文签名一致的 chunk。
+- Whisper 常见的小时间重叠属于 ASR 时间轴修复问题，不属于普通翻译/QC 阶段。只有 `scripts/repair_asr_timestamps.py` 这类专门的 ASR 修复工具可以在 ASR 后、翻译前处理轻微 overlap；大 overlap 只报告，不自动修。若已存在对应 `.zh.srt`，默认不要单独改 `.ja.asr.srt`。
 - 翻译阶段生成的 `<file>.zh.srt.flags.json` 可用于后续 QC 分流。速度敏感时，QC 优先用 `--qc-tier two-pass`：全量轻 QC + 高风险深 QC。
 - 新跑 ASR 前必须先用 `scripts/resolve_asr_route.py` 做只读分流；`asr_backend=auto` 默认先探测本地平台 API 端口是否支持 `/audio/transcriptions`，再探测配置的 `local-asr-api`，再使用 skill 自带 Python Whisper 脚本。若本机没有 `whisper`，最后才使用 `scripts/setup_whisper_backend.py` 这条受控 setup 路线安装 `openai-whisper` 并下载/缓存模型，不允许 agent 临时拼 pip 命令、下载未知模型或猜测本地二进制入口。
 - ASR 脚本默认按音频文件断点续跑：可解析的 `.ja.asr.srt` 会跳过，只有 `.ja.asr.json` 时优先重建 SRT，并维护 `asr_manifest.json`。
@@ -49,7 +50,8 @@
 9. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
 10. 任何 ASR/翻译/QC 模型调用前，先跑 `scripts/check_preflight.py "$PROJECT_ROOT" --stage <asr|translate|qc>`。
 11. 如果本轮必须新跑 ASR，跑 `scripts/resolve_asr_route.py --config "$PROJECT_ROOT/project_config.json" --require-new-asr`。若返回 `blocked`，停下向用户确认 ASR 路线。
-12. 进入对应 workflow 的执行步骤。
+12. ASR 完成后，如果 `validate_subtitles.py` 报 `time_overlap`，可在翻译前跑 `scripts/repair_asr_timestamps.py` 做保守修复，并再次校验。
+13. 进入对应 workflow 的执行步骤。
 
 ## 模型任务边界
 

@@ -11,6 +11,7 @@ from typing import Any
 
 from tqdm import tqdm
 
+from preflight_gate import add_preflight_args, enforce_preflight
 from subtitle_io import format_srt_timestamp, parse_srt_text
 from subtitle_chunking import (
     Chunk,
@@ -386,8 +387,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--context", default="", help="Brief work-specific context and known ASR risks for QC.")
     parser.add_argument("--context-file", default="", help="Optional Markdown/text context profile to include in QC prompts.")
+    add_preflight_args(parser)
     parser.set_defaults(resume=True)
     args = parser.parse_args()
+    enforce_preflight(args, "qc")
 
     asr_dir = Path(args.asr_dir)
     zh_dir = Path(args.zh_dir)

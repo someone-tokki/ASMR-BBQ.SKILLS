@@ -95,10 +95,14 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
   --qc-base-url "$QC_BASE_URL" \
   --qc-model "$QC_MODEL" \
   --confirmed \
+  --confirmation-source explicit_user \
+  --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
+  --preflight-questions-presented \
+  --audio-scope-report "$PROJECT_ROOT/audio_scope_report.json" \
   --overwrite
 ```
 
-如果用户选择全部，使用 `--scope all`。如果用户指定具体文件，使用 `--scope selected_files --selected-audio-file "<file>"`。
+如果用户选择全部，使用 `--scope all`，并保留 `--audio-scope-report "$PROJECT_ROOT/audio_scope_report.json"` 或 `--audio-scope-summary "..."`。如果用户指定具体文件，使用 `--scope selected_files --selected-audio-file "<file>"`。如果用户明确说“全部按默认/你决定/不用问”，可以使用 `--confirmation-source user_default_authorized --confirmation-text "<用户授权原话或摘要>"`；auto mode 自身不算授权。
 
 随后把本次确认的 stage 模型同步到用户可编辑的模型偏好：
 
@@ -113,6 +117,15 @@ python scripts/check_preflight.py "$PROJECT_ROOT" --stage asr
 python scripts/check_preflight.py "$PROJECT_ROOT" --stage translate
 python scripts/check_preflight.py "$PROJECT_ROOT" --stage qc
 ```
+
+`check_preflight.py` 只确认本轮选择已经落盘；进入翻译或 QC 这种 chat 模型阶段前，还要确认当前本地后端真的能调用目标模型：
+
+```bash
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY"
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage translate --from-config --api-key "$TRANSLATE_API_KEY"
+```
+
+如果翻译模型和 QC 模型不同，QC 前的阶段检查是硬门禁。HTTP 500 常见原因是上一阶段模型尚未释放显存/内存、目标 QC 模型加载失败或过大、本地后端不支持自动热切换、模型名不匹配，或服务需要手动重载/重启。此时停止并让用户释放/切换/加载模型后重试，不要改用 agent 自身模型做 QC。
 
 没有 confirmed `run_profile.json` 时，agent 必须停下询问。
 

@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from tqdm import tqdm
 
 from subtitle_io import Subtitle, compose_srt_text, format_srt_timestamp, parse_srt_text
 from subtitle_chunking import Chunk, build_semantic_chunks, chunk_summary
+from preflight_gate import add_preflight_args, enforce_preflight
 
 
 SYSTEM_PROMPT = """你是专业的日译中 ASMR 字幕翻译器。
@@ -98,8 +100,30 @@ def post_json(url: str, api_key: str, payload: dict, timeout: int) -> dict:
             "Authorization": f"Bearer {api_key}",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            detail = ""
+        if len(detail) > 1000:
+            detail = detail[:1000] + "...[truncated]"
+        model = str(payload.get("model") or "")
+        message = f"HTTP {exc.code} from {url} while calling model '{model}'."
+        if exc.code == 500:
+            message += (
+                " For local stage switches, common causes are: the previous stage model still occupies memory; "
+                "the target model failed to load or is too large; the backend cannot hot-switch models from the "
+                "request model field; the model id is wrong; or the service needs a manual reload/restart. "
+                "Run scripts/prepare_model_stage.py for the target stage before retrying."
+            )
+        if detail:
+            message += f" Response body: {detail}"
+        raise RuntimeError(message) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not reach {url}: {exc}") from exc
 
 
 def extract_json_array(text: str) -> list[dict]:
@@ -338,8 +362,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--sleep", type=float, default=0.0)
     parser.add_argument("--progress-position", type=int, default=0)
+    add_preflight_args(parser)
     parser.set_defaults(resume=True)
     args = parser.parse_args()
+    enforce_preflight(args, "translate")
     apply_preset(args)
 
     input_path = Path(args.input_srt)

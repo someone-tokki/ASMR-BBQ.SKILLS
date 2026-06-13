@@ -13,6 +13,7 @@ QUALITY_MODES = {"draft", "standard", "premium", "polish"}
 OUTPUT_FORMATS = {"vtt", "srt", "both"}
 CHUNK_PRESETS = {"safe", "fast", "turbo"}
 QC_TIERS = {"off", "light", "standard", "deep", "two-pass"}
+CONFIRMATION_SOURCES = {"explicit_user", "user_default_authorized", "imported_existing"}
 
 
 MODE_DEFAULTS = {
@@ -62,6 +63,19 @@ def missing_fields(profile: dict[str, Any]) -> list[str]:
             missing.append("selected_audio_dirs")
         if profile.get("scope") == "selected_files" and not profile.get("selected_audio_files"):
             missing.append("selected_audio_files")
+    if profile.get("scope") == "all" and not (
+        profile.get("audio_scope_summary")
+        or profile.get("audio_scope_report")
+        or profile.get("preflight_questions_presented") is True
+    ):
+        missing.append("audio_scope_summary_or_report")
+    if profile.get("confirmed"):
+        if profile.get("confirmation_source") not in CONFIRMATION_SOURCES:
+            missing.append("confirmation_source")
+        if profile.get("confirmation_source") == "user_default_authorized" and not profile.get("confirmation_text"):
+            missing.append("confirmation_text")
+        if profile.get("preflight_questions_presented") is not True:
+            missing.append("preflight_questions_presented")
     stages = profile.get("stages", {})
     for name in ("asr", "translate", "qc"):
         current = stages.get(name, {})
@@ -85,6 +99,17 @@ def build_profile(args: argparse.Namespace, existing: dict[str, Any] | None = No
         "updated_at": now_utc(),
         "confirmed": bool(args.confirmed),
         "needs_user_confirmation": not bool(args.confirmed),
+        "confirmation_source": args.confirmation_source,
+        "confirmation_text": args.confirmation_text,
+        "confirmed_at": now_utc() if args.confirmed else "",
+        "confirmed_by": (
+            "agent_with_user_default_authorization"
+            if args.confirmation_source == "user_default_authorized"
+            else ("user" if args.confirmed else "")
+        ),
+        "preflight_questions_presented": bool(args.preflight_questions_presented),
+        "audio_scope_summary": args.audio_scope_summary,
+        "audio_scope_report": args.audio_scope_report,
         "quality_mode": args.quality_mode,
         "scope": args.scope,
         "selected_audio_dirs": split_values(args.selected_audio_dir),
@@ -136,9 +161,25 @@ def main() -> int:
     parser.add_argument("--qc-base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--qc-model", default="qwen3.6-27b")
     parser.add_argument("--confirmed", action="store_true")
+    parser.add_argument("--confirmation-source", default="", choices=["", *sorted(CONFIRMATION_SOURCES)])
+    parser.add_argument("--confirmation-text", default="", help="User confirmation text or concise summary.")
+    parser.add_argument("--preflight-questions-presented", action="store_true")
+    parser.add_argument("--audio-scope-summary", default="")
+    parser.add_argument("--audio-scope-report", default="")
+    parser.add_argument(
+        "--assume-defaults-authorized",
+        action="store_true",
+        help="Use only when the user explicitly authorized defaults; sets confirmation_source=user_default_authorized.",
+    )
     parser.add_argument("--note", action="append", default=[])
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
+    if args.assume_defaults_authorized and not args.confirmation_source:
+        args.confirmation_source = "user_default_authorized"
+    if args.confirmed and not args.confirmation_source:
+        raise SystemExit(
+            "--confirmed now requires --confirmation-source. Use explicit_user, user_default_authorized, or imported_existing."
+        )
 
     root = Path(args.project_root)
     path = profile_path(root)

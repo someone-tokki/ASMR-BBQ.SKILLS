@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from preflight_gate import add_preflight_args, enforce_preflight
 from asr_resume import (
     load_manifest,
     output_paths,
@@ -43,8 +44,10 @@ def main() -> int:
     parser.add_argument("--manifest", default="", help="ASR resume manifest path. Defaults to <out-dir>/asr_manifest.json.")
     parser.add_argument("--no-resume", dest="resume", action="store_false", help="Do not skip complete existing outputs.")
     parser.add_argument("--force", action="store_true", help="Transcribe even when reusable outputs already exist.")
+    add_preflight_args(parser)
     parser.set_defaults(resume=True)
     args = parser.parse_args()
+    enforce_preflight(args, "asr")
 
     try:
         import whisper

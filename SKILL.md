@@ -121,9 +121,11 @@ ASR resume rule: ASR scripts resume by default at the audio-file level. They ski
 
 ASR optimization rule: improve ASR cautiously and only when the selected backend/tool supports the option. Prefer user-selected audio first; otherwise prefer no-SE audio only when track mapping is clear. If no-SE MP3 and WAV versions are both available for the same matched track, use MP3 first for speed, but fall back to WAV or ask for review when the MP3 looks cropped, preview-only, unusually tiny, or otherwise suspicious. For long or difficult audio, use `scripts/prepare_asr_audio_cache.py` to create `$PROJECT_ROOT/asr_prepared/` segment plans and optional normalized 16k mono audio. VAD may skip long silence or pure ambience only when supported and explicitly chosen, but it must not remove low-volume whispers, breaths, important pauses, or quiet dialogue. When splitting long audio, use overlap/stride to avoid boundary truncation, pass the previous segment transcript as prompt/context when supported, and record segment-level progress so interrupted runs can resume without discarding completed segments. Keep audio-file-level resume regardless. For ASMR breaths, ear-licking, kissing, and repeated sound effects, it is acceptable for final subtitles to simplify repeated noise; do not encourage ASR or later translation to generate meaningless repeated text walls.
 
+ASR timestamp repair rule: Whisper-style small timeline overlaps belong to the ASR repair stage, not the translation or QC stages. Use `scripts/repair_asr_timestamps.py` after ASR and before translation when `validate_subtitles.py` reports `time_overlap`. This tool may auto-fix only small overlaps by clipping the previous subtitle end to the current subtitle start while preserving index order and subtitle text. Large overlaps, invalid ranges, or overlaps that would make a subtitle too short must remain review-only. When matching `.zh.srt` files already exist, do not silently fix `.ja.asr.srt` alone because that would break JA/ZH pair timeline alignment; report the issue or rerun the downstream translation/QC chain after the repair.
+
 ## Mandatory Preflight Confirmation
 
-Before starting production ASR, translation, or QC model calls, the agent must complete Preflight unless the current user request already explicitly provides every required choice.
+Before starting production ASR, translation, or QC model calls, the agent must complete Preflight unless the current user request already explicitly provides every required choice. Auto mode is not user confirmation. Agent-selected defaults are only a proposal unless the user explicitly says to use defaults, "you decide", "no need to ask", or equivalent.
 
 The agent must:
 
@@ -134,11 +136,13 @@ The agent must:
 5. Confirm translation backend/base URL/model.
 6. Confirm QC backend/base URL/model.
 7. Confirm output format: `vtt`, `srt`, or `both`.
-8. Write the confirmed choices to `$PROJECT_ROOT/run_profile.json` with `scripts/prepare_run_profile.py`.
+8. Write the confirmed choices to `$PROJECT_ROOT/run_profile.json` with `scripts/prepare_run_profile.py`, including `--confirmation-source`, `--confirmation-text`, `--preflight-questions-presented`, and either `--audio-scope-report` or `--audio-scope-summary`.
 9. Sync confirmed stage model choices with `scripts/manage_model_profile.py sync-run-profile "$PROJECT_ROOT"` when a model profile should drive later commands.
 10. Before each model stage, run `scripts/check_preflight.py "$PROJECT_ROOT" --stage <asr|translate|qc>`.
 
-If any choice is missing, ambiguous, or inconsistent with the detected environment, stop and ask the user before model calls. If the user says "default" or "you decide", choose reasonable defaults, show the final choices, write `run_profile.json`, and only then continue.
+If any choice is missing, ambiguous, or inconsistent with the detected environment, stop and ask the user before model calls. If the user says "default" or "you decide", choose reasonable defaults, show the final choices, write `run_profile.json` with `confirmation_source=user_default_authorized`, and only then continue.
+
+Production ASR, translation, and QC scripts accept `--project-root "$PROJECT_ROOT"` and will enforce the preflight gate when it is supplied. Formal workflow commands must pass `--project-root`; use `--no-preflight-check` only for isolated debugging or fixtures, not for normal subtitle production.
 
 Quality mode mapping:
 
@@ -157,7 +161,16 @@ python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" translate --from-
 python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" qc --from-config
 ```
 
-ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available unless the user/project profile chooses another model. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR. Before moving stages, confirm the previous job finished, output files are written, and the next API/model is reachable; release or switch loaded models if the local platform requires it.
+ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available unless the user/project profile chooses another model. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR.
+
+Before translation, mandatory QC, or any additional QC refinement, run `scripts/prepare_model_stage.py` for the target chat stage. This is separate from Preflight: Preflight confirms which models the run intends to use; model-stage preparation confirms the target local model is reachable and can answer right now. If translation and QC use different models, the QC stage check is a hard gate:
+
+```bash
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY"
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage translate --from-config --api-key "$TRANSLATE_API_KEY"
+```
+
+If the stage check reports `FAIL`, stop before the model call. HTTP 500 from `/chat/completions` commonly means the previous stage model still occupies memory, the target model failed to load or is too large, the backend cannot hot-switch from the request `model` field, the model id is wrong, or the service needs a manual reload/restart. Ask the user to release/unload the previous model or manually switch/load the target model, then rerun the stage check. Do not keep blind-retrying, and do not substitute the agent's own model.
 
 Local model invocation discipline: when a workflow step says translation, mandatory model QC, or optional QC refinement, the agent must call the resolved configured model endpoint through the relevant script. The agent's own reasoning model is not a substitute for local/configured model QC, including second and later refinement rounds. The agent may orchestrate commands, read reports, compare evidence, and apply accepted corrections, but it must not silently replace `scripts/qc_srt_omlx.py` or the configured `/chat/completions` QC model with self-QC. If the configured local QC endpoint/model is unavailable, stop and report the missing service or ask for a backend change; do not "helpfully" continue by using the agent model as the QC model.
 
@@ -167,8 +180,9 @@ Use the selected workflow doc for exact commands. The normal sequence is:
 
 1. ASR to Japanese `.ja.asr.srt`, or reuse existing `.ja.asr.srt` files if they already pass structure checks. New ASR requires a resolved ASR route from `scripts/resolve_asr_route.py`. When multiple audio variants exist, use `scripts/select_asr_audio_source.py`: user-selected audio wins; otherwise prefer matched no-SE files, with no-SE MP3 preferred over no-SE WAV for the same track unless warnings require review.
 2. Structure check against expected SRT shape when files exist.
-3. Translate to Chinese `.zh.srt`. Prefer semantic dynamic chunks with halo context: use `scripts/translate_srt_omlx.py` or `scripts/batch_translate_srt_omlx.py` with `--preset fast` for standard work, `safe` for premium work, or `turbo` for draft work. These presets expand to dynamic chunk settings with `--target-chars`, `--hard-chars`, `--min-chunk-size`, `--max-chunk-size`, `--context-before`, and `--context-after`. The halo is only for context; the model must output target indexes only, and every target index must be covered. Translation creates `<file>.zh.srt.flags.json` with optional focus flags such as `asr_uncertain`, `adult_term`, `speaker_ambiguous`, `pronoun_ambiguous`, `onomatopoeia`, `long_line`, `possible_noise`, and `needs_context`. Translation chunk cache is stored under `<output_stem>.translate_chunks/` by default and may only be reused when the chunk signature matches content, target indexes, halo, model, base URL, prompt/schema version, and chunk settings.
-4. Run structure validation:
+3. If structure validation reports minor `time_overlap` issues in `.ja.asr.srt`, optionally run `scripts/repair_asr_timestamps.py` before translation. This is an ASR timeline repair step, not a translation/QC edit step. After repair, rerun `validate_subtitles.py`.
+4. Translate to Chinese `.zh.srt`. Prefer semantic dynamic chunks with halo context: use `scripts/translate_srt_omlx.py` or `scripts/batch_translate_srt_omlx.py` with `--preset fast` for standard work, `safe` for premium work, or `turbo` for draft work. These presets expand to dynamic chunk settings with `--target-chars`, `--hard-chars`, `--min-chunk-size`, `--max-chunk-size`, `--context-before`, and `--context-after`. The halo is only for context; the model must output target indexes only, and every target index must be covered. Translation creates `<file>.zh.srt.flags.json` with optional focus flags such as `asr_uncertain`, `adult_term`, `speaker_ambiguous`, `pronoun_ambiguous`, `onomatopoeia`, `long_line`, `possible_noise`, and `needs_context`. Translation chunk cache is stored under `<output_stem>.translate_chunks/` by default and may only be reused when the chunk signature matches content, target indexes, halo, model, base URL, prompt/schema version, and chunk settings.
+5. Run structure validation:
 
 ```bash
 python scripts/validate_subtitles.py \
@@ -177,7 +191,7 @@ python scripts/validate_subtitles.py \
   --json-out "$PROJECT_ROOT/validate_report.json"
 ```
 
-5. Run high-risk scan:
+6. Run high-risk scan:
 
 ```bash
 python scripts/scan_subtitle_risks.py \
@@ -185,7 +199,7 @@ python scripts/scan_subtitle_risks.py \
   --json-out "$PROJECT_ROOT/risk_report.json"
 ```
 
-6. Run ASMR readability check:
+7. Run ASMR readability check:
 
 ```bash
 python scripts/subtitle_readability.py \
