@@ -18,7 +18,7 @@
 - 新跑 ASR 前必须先用 `scripts/resolve_asr_route.py` 做只读分流；`asr_backend=auto` 默认先探测本地平台 API 端口是否支持 `/audio/transcriptions`，再探测配置的 `local-asr-api`，再使用 skill 自带 Python Whisper 脚本。若本机没有 `whisper`，最后才使用 `scripts/setup_whisper_backend.py` 这条受控 setup 路线安装 `openai-whisper` 并下载/缓存模型，不允许 agent 临时拼 pip 命令、下载未知模型或猜测本地二进制入口。
 - ASR 脚本默认按音频文件断点续跑：可解析的 `.ja.asr.srt` 会跳过，只有 `.ja.asr.json` 时优先重建 SRT，并维护 `asr_manifest.json`。
 - ASR 优化必须谨慎：无 SE 音源优先；后端支持时可用 VAD 跳过长静音/纯环境声、用 overlap/stride 防止分段边界截断、把前一段 transcript 作为下一段 prompt/context、并保留分段级断点。不得因为 VAD 或切段漏掉低声耳语、喘息中的有效台词、重要停顿或安静对白；ASMR 重复喘息/耳舐/亲吻声后续可简化，不要让 ASR/翻译堆出无意义重复文本墙。
-- 双声道/多人耳语补漏只按需触发：用户指出漏字幕、QC/抽听发现疑似漏识别、或主 ASR 长空白但音频有声时，读取 `docs/channel_recovery.md`，用 `scripts/prepare_channel_recovery.py` 只对候选片段切左右声道。补漏结果是候选，不自动覆盖主 ASR 或最终字幕。
+- 双声道/多人耳语补漏只按需触发：主 ASR 后可用 `scripts/detect_channel_activity.py` 做轻量候选扫描；用户指出漏字幕、QC/抽听发现疑似漏识别、或检测到主 ASR 长空白/弱覆盖但音频有声时，读取 `docs/channel_recovery.md`，用 `scripts/prepare_channel_recovery.py` 只对候选片段切左右声道。弱覆盖包括省略号、极短喘息/拟声/触发音、或长时间音频只对应极短文本。检测不确定时必须提醒用户甄别；补漏结果是候选，不自动覆盖主 ASR 或最终字幕。
 - QC 脚本默认按 chunk 断点续跑，并使用动态 chunk：长句、高风险词密集、ASMR 成人内容密集时自动缩小 chunk；简单短对白可适当放大。只有调试或精确复现时才固定 chunk。
 - 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查或格式转换。
 

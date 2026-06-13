@@ -1265,3 +1265,79 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Future improvement: audio-energy/VAD based automatic candidate detection instead of using explicit windows or main-ASR gaps only.
 - Next:
   - Validate and include in the next commit/package batch.
+
+## 2026-06-13 - Channel Activity Candidate Detection
+
+- Current task: add lightweight automatic detection for possible stereo/multi-speaker ASR recovery candidates, with explicit user-disambiguation warnings when uncertain.
+- Completed:
+  - Added `scripts/detect_channel_activity.py`.
+  - The detector converts audio to temporary 16 kHz stereo PCM with ffmpeg, analyzes left/right RMS by frame, cross-checks main ASR coverage, and writes `channel_activity_candidates.json` plus a Markdown report.
+  - Candidate output is candidate-only, never proof of speech and never an automatic subtitle merge.
+  - Medium/low confidence or uncertain candidates are marked with `needs_user_disambiguation` / `user_disambiguation_required`, and reports explicitly warn that ASMR effects, BGM, breaths, or rubbing can trigger false positives.
+  - Optional `--prepare-out` can pass high-confidence candidates to `prepare_channel_recovery.py`, still without transcribing or merging.
+  - Updated `SKILL.md`, `docs/channel_recovery.md`, `docs/task_routing.md`, both workflow docs, and `docs/user_guide.md`.
+  - Added the detector to `scripts/check_environment.py`.
+- Modified files:
+  - `scripts/detect_channel_activity.py`
+  - `scripts/prepare_channel_recovery.py`
+  - `scripts/check_environment.py`
+  - `docs/channel_recovery.md`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/user_guide.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/detect_channel_activity.py --help`
+  - fixture detection against generated stereo audio and main ASR gap
+  - fixture detection with `--prepare-out`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - `detect_channel_activity.py --help` works.
+  - Fixture detection produced `channel_activity_candidates.json` and Markdown report.
+  - Fixture `--prepare-out` handed candidates to `prepare_channel_recovery.py` and produced channel recovery clips/review.
+  - Reports and JSON explicitly include `speech_not_confirmed_energy_only`, `needs_user_disambiguation`, and `user_disambiguation_required=true`; stdout also prints `REVIEW_REQUIRED`.
+  - `check_environment.py --dry-run-install --skip-api` detects `detect_channel_activity.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Optional future enhancement: add true VAD backend integration as a soft signal when a suitable package is available.
+- Next:
+  - Validate and include in the next commit/package batch.
+
+## 2026-06-13 - Weak Main-ASR Coverage For Channel Activity
+
+- Current task: improve channel activity detection so it does not rely only on blank main-ASR spans.
+- Completed:
+  - Updated `scripts/detect_channel_activity.py` to classify main ASR coverage per frame as `none`, `weak`, or `strong`.
+  - Weak coverage includes empty text, punctuation/ellipsis, common short breaths or onomatopoeia, very short text over longer audio, and low text density.
+  - `weak_main_asr_coverage` now contributes to channel recovery candidate scoring and reporting.
+  - Candidate JSON now includes `weak_asr_coverage_ratio` and `gap_or_weak_coverage_ratio`.
+  - Updated `SKILL.md`, `docs/channel_recovery.md`, `docs/task_routing.md`, and both workflow docs to explain weak coverage and the need for user/audio disambiguation.
+- Modified files:
+  - `scripts/detect_channel_activity.py`
+  - `SKILL.md`
+  - `docs/channel_recovery.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - weak-coverage fixture with main ASR text `……`
+  - strong-coverage fixture to confirm normal text suppresses gap/weak reasons
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - Weak-coverage fixture with main ASR text `……` produced a candidate with `weak_main_asr_coverage`, `weak_asr_coverage_ratio`, and `gap_or_weak_coverage_ratio`.
+  - Strong-coverage fixture with normal Japanese text did not mark the covered span as weak; only uncovered edge gaps remained candidates.
+  - `detect_channel_activity.py --help` works.
+  - `check_environment.py --dry-run-install --skip-api` detects `detect_channel_activity.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Weak ASR text lists may need tuning after real ASMR samples.
+- Next:
+  - Validate and include in the next commit/package batch.

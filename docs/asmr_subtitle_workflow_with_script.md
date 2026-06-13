@@ -229,7 +229,16 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ASR 优化必须谨慎使用。优先无 SE 音源；如果所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
 
-   如果台本、抽听或用户反馈显示某段双人/多人左右耳语被主 ASR 漏掉，读取 `docs/channel_recovery.md`，只对候选时间窗做双声道补漏准备，不默认全片左右声道 ASR：
+   主 ASR 后可以先跑轻量候选扫描，只生成报告，不自动合并字幕：
+
+   ```bash
+   python scripts/detect_channel_activity.py \
+     "$AUDIO_FILE" \
+     --main-asr "$ASR_DIR/$TRACK_STEM.ja.asr.srt" \
+     --json-out "$PROJECT_ROOT/channel_recovery/$TRACK_STEM/channel_activity_candidates.json"
+   ```
+
+   检测不只看主 ASR 空白，也会把弱覆盖当候选信号，例如主 ASR 只有 `……`、`...`、极短喘息/拟声/触发音，或长时间音频只对应极短文本。如果报告中出现 `needs_user_disambiguation` 候选，必须明确提醒用户甄别：这段可能是有效台词，也可能只是 ASMR 音效、BGM、喘息或摩擦声。如果台本、抽听或用户反馈显示某段双人/多人左右耳语被主 ASR 漏掉或弱覆盖，读取 `docs/channel_recovery.md`，只对候选时间窗做双声道补漏准备，不默认全片左右声道 ASR：
 
    ```bash
    python scripts/prepare_channel_recovery.py \
