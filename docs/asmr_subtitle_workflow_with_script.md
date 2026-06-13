@@ -31,6 +31,7 @@
 - 促销 SRT 中间稿：`$PROJECT_ROOT/promo_srt_work/*.zh.srt`
 - 促销字幕：默认 `$FINAL_SUBTITLE_DIR/*.zh.vtt`；用户指定 `srt` 或 `both` 时可输出 `.zh.srt` 或两者
 - 可选比对报告：`$PROJECT_ROOT/asr_vs_script_report.md`
+- 可选双声道补漏：`$PROJECT_ROOT/channel_recovery/<track>/`
 
 `$SOURCE_PROJECT_DIR` 默认是源 ASMR 作品根目录；`$PROJECT_ROOT` 默认是 `$SOURCE_PROJECT_DIR/subtitle_project/`，不再默认创建 `generated_subtitles/<WORK_ID>`，也不要把 `project_config.json`、QC 报告、ASR 中间稿等散放在作品根目录。ASR、SRT 中间稿、QC 报告、台本比对报告、review notes、学习库草稿等工作产物放在 `$PROJECT_ROOT` 下的专用子目录/文件。最终字幕统一放进 `$FINAL_SUBTITLE_DIR`，默认是 `$SOURCE_PROJECT_DIR/subtitles/`；不要再按 `WAV 本編/`、`プロモーション用音声/`、`音声/` 等音频目录创建同名成品目录。默认最终字幕为 `.zh.vtt`；用户指定 `srt` 或 `both` 时，可放 `.zh.srt` 或两种格式。本篇、EX、促销/试听字幕都可以放在同一个 `$FINAL_SUBTITLE_DIR`，用保留来源轨道 stem 的文件名区分，避免覆盖。
 
@@ -227,6 +228,17 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    如果返回 `run_local_platform_asr_api` 或 `run_local_asr_api`，使用报告里的 `ASR_BASE_URL` 调用本地 `/audio/transcriptions`。如果用户明确选择外部 ASR 命令或 `mlx_whisper`，按对应路线执行；否则不要用临时 pip 命令、乱猜本地入口或把只支持 chat 的翻译/QC 服务当成 ASR。若有无 SE 版本且用户没有指定别的版本，优先用无 SE 版本作为 ASR 输入；最终字幕仍输出到 `$FINAL_SUBTITLE_DIR`，不是 ASR 输入目录或音频子目录。
 
    ASR 优化必须谨慎使用。优先无 SE 音源；如果所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
+
+   如果台本、抽听或用户反馈显示某段双人/多人左右耳语被主 ASR 漏掉，读取 `docs/channel_recovery.md`，只对候选时间窗做双声道补漏准备，不默认全片左右声道 ASR：
+
+   ```bash
+   python scripts/prepare_channel_recovery.py \
+     "$AUDIO_FILE" \
+     --out-dir "$PROJECT_ROOT/channel_recovery/$TRACK_STEM" \
+     --window 03:12-03:28
+   ```
+
+   然后对 `$PROJECT_ROOT/channel_recovery/$TRACK_STEM/clips` 使用当前解析到的 ASR backend/model 转写。补漏结果只作为候选；不得自动覆盖主 `.ja.asr.srt` 或最终字幕。有台本时，合并补漏内容前必须优先对照台本和相邻上下文。
 
    无论使用哪种 ASR，输出合约固定为 `$ASR_DIR/<track>.ja.asr.srt`，可选保留 `$ASR_DIR/<track>.ja.asr.json`。本地 API ASR 命令：
 

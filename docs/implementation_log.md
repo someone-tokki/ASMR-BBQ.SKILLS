@@ -1229,3 +1229,39 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - None.
 - Next:
   - Validate and include in the next commit/package batch.
+
+## 2026-06-13 - Stereo Channel Recovery ASR
+
+- Current task: add an ASMR-specific channel recovery feature for suspected two-person left/right whisper ASR gaps.
+- Completed:
+  - Added `scripts/prepare_channel_recovery.py` to prepare candidate left/right mono clips from user-provided windows or long gaps in a main ASR SRT.
+  - The tool writes `channel_recovery_manifest.json` and `channel_recovery_review.md`, and never modifies the main ASR or final subtitles.
+  - Added `docs/channel_recovery.md` to define the candidate-only workflow, output layout, ASR commands, review decisions, and translation display guidance.
+  - Linked channel recovery from `SKILL.md`, `docs/task_routing.md`, both workflow docs, and `docs/user_guide.md`.
+  - Added `prepare_channel_recovery.py` to environment script checks.
+- Modified files:
+  - `scripts/prepare_channel_recovery.py`
+  - `scripts/check_environment.py`
+  - `docs/channel_recovery.md`
+  - `SKILL.md`
+  - `docs/task_routing.md`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/user_guide.md`
+  - `docs/implementation_log.md`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/prepare_channel_recovery.py --help`
+  - dry-run fixture with generated stereo audio and main ASR gap
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - `prepare_channel_recovery.py --help` works.
+  - Fixture test generated a stereo audio file, detected the main-ASR gap, wrote `channel_recovery_manifest.json`, `channel_recovery_review.md`, and left/right mono clips.
+  - `check_environment.py --dry-run-install --skip-api` detects `prepare_channel_recovery.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Future improvement: audio-energy/VAD based automatic candidate detection instead of using explicit windows or main-ASR gaps only.
+- Next:
+  - Validate and include in the next commit/package batch.

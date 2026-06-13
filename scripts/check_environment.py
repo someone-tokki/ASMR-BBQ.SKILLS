@@ -42,6 +42,7 @@ REQUIRED_SCRIPTS = [
     "resolve_asr_route.py",
     "scan_subtitle_risks.py",
     "select_asr_audio_source.py",
+    "prepare_channel_recovery.py",
     "subtitle_readability.py",
     "review_qc_report.py",
     "manage_project_config.py",

@@ -19,8 +19,9 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
    - With script or official text: read `docs/asmr_subtitle_workflow_with_script.md`.
    - Audio only: read `docs/asmr_subtitle_workflow_no_script.md`.
 4. For platform/backend decisions, read `docs/platform_compatibility.md`.
-5. When the user asks what this Skill can do or how to request work, refer them to `docs/user_guide.md`.
-6. For long-running repository work inside this development repo, append concise recovery notes to `docs/implementation_log.md`. This log is development-only and should not be copied into a packaged Skill unless explicitly requested.
+5. For stereo/multi-speaker ASMR ASR gap recovery, read `docs/channel_recovery.md`.
+6. When the user asks what this Skill can do or how to request work, refer them to `docs/user_guide.md`.
+7. For long-running repository work inside this development repo, append concise recovery notes to `docs/implementation_log.md`. This log is development-only and should not be copied into a packaged Skill unless explicitly requested.
 
 ## Agent Responsibilities
 
@@ -119,6 +120,8 @@ ASR resume rule: ASR scripts resume by default at the audio-file level. They ski
 
 ASR optimization rule: improve ASR cautiously and only when the selected backend/tool supports the option. Prefer no-SE audio for recognition unless the user chooses another version. For long or difficult audio, VAD may skip long silence or pure ambience, but it must not remove low-volume whispers, breaths, important pauses, or quiet dialogue. When splitting long audio, use overlap/stride to avoid boundary truncation, pass the previous segment transcript as prompt/context when supported, and record segment-level progress so interrupted runs can resume without discarding completed segments. Keep audio-file-level resume regardless. For ASMR breaths, ear-licking, kissing, and repeated sound effects, it is acceptable for final subtitles to simplify repeated noise; do not encourage ASR or later translation to generate meaningless repeated text walls.
 
+Channel recovery rule: for suspected two-person stereo whisper gaps, do not run full-track left/right ASR by default. First use the normal main ASR timeline. If the user points to missing speech, QC/listening finds a gap, or main ASR has a suspicious long blank, use `scripts/prepare_channel_recovery.py` to create left/right candidate clips under `$PROJECT_ROOT/channel_recovery/<track>/`. Transcribe those clips with the resolved ASR backend, review them as candidates, and only merge clear missing speech after evidence review. Channel recovery output must not automatically overwrite the main ASR or final subtitles.
+
 Stage/model switching rule: ASR, translation, and QC run serially. At the start of each stage, resolve `backend`, `base_url`, `model`, and `interface` from `model_profile.json` when present, falling back to `project_config.json` and workflow defaults. Use:
 
 ```bash
@@ -207,7 +210,7 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 
 ## Packaging Boundary
 
-When preparing this as a formal Skill, include `SKILL.md`, `agents/`, `scripts/`, `references/`, `data/`, `docs/user_guide.md`, `docs/learning_library_guide.md`, and workflow/reference docs that the Skill directly links to. Exclude `generated_subtitles/`, `docs/implementation_log.md`, caches, local model files, private configs, and any per-work reports unless the user explicitly asks for a development snapshot.
+When preparing this as a formal Skill, include `SKILL.md`, `agents/`, `scripts/`, `references/`, `data/`, `docs/user_guide.md`, `docs/learning_library_guide.md`, `docs/channel_recovery.md`, and workflow/reference docs that the Skill directly links to. Exclude `generated_subtitles/`, `docs/implementation_log.md`, caches, local model files, private configs, and any per-work reports unless the user explicitly asks for a development snapshot.
 
 ## Finalization
 

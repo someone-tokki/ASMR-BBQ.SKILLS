@@ -39,6 +39,12 @@ $SOURCE_PROJECT_DIR/  # 源 ASMR 作品根目录
     qc_report.json
     qc_report_chunks/
     qc_refinement/
+    channel_recovery/
+      <track>/
+        channel_recovery_manifest.json
+        channel_recovery_review.md
+        clips/
+        asr/
     review_notes.md
   subtitles/  # 默认 FINAL_SUBTITLE_DIR，只放最终交付字幕
     <track>.zh.vtt
@@ -55,6 +61,10 @@ $PROJECT_ROOT/  # 默认等于 $SOURCE_PROJECT_DIR/subtitle_project/
     <promo>.ja.asr.srt
   promo_srt_work/
     <promo>.zh.srt
+  channel_recovery/
+    <track>/
+      clips/
+      asr/
   review_notes.md
 
 $FINAL_SUBTITLE_DIR/  # 默认是 $SOURCE_PROJECT_DIR/subtitles/
@@ -231,6 +241,28 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    - 对特别难的音频分段重跑或换更强模型
 
    ASR 优化必须谨慎使用。优先无 SE 音源；如果所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
+
+   双人/多人左右耳语补漏只按需执行。若用户指出某段漏字幕，或 QC/抽听发现主 ASR 长空白但音频里有有效台词，读取 `docs/channel_recovery.md`，只对候选时间窗切左右声道 clip：
+
+   ```bash
+   python scripts/prepare_channel_recovery.py \
+     "$AUDIO_FILE" \
+     --out-dir "$PROJECT_ROOT/channel_recovery/$TRACK_STEM" \
+     --window 03:12-03:28
+   ```
+
+   也可从主 ASR 的长空白段生成候选：
+
+   ```bash
+   python scripts/prepare_channel_recovery.py \
+     "$AUDIO_FILE" \
+     --out-dir "$PROJECT_ROOT/channel_recovery/$TRACK_STEM" \
+     --from-srt "$ASR_DIR/$TRACK_STEM.ja.asr.srt" \
+     --min-gap 2.0 \
+     --pad 0.25
+   ```
+
+   然后对 `$PROJECT_ROOT/channel_recovery/$TRACK_STEM/clips` 使用当前解析到的 ASR backend/model 转写。补漏结果只作为候选；不得自动覆盖主 `.ja.asr.srt` 或最终字幕。若确认需要并入主时间轴，先记录 review 决定，再重跑结构校验、翻译和 QC。
 
    无论使用哪种 ASR，输出合约固定为 `$ASR_DIR/<track>.ja.asr.srt`，可选保留 `$ASR_DIR/<track>.ja.asr.json`。本地 API ASR 命令：
 

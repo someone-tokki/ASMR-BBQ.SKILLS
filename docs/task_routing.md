@@ -18,6 +18,7 @@
 - 新跑 ASR 前必须先用 `scripts/resolve_asr_route.py` 做只读分流；`asr_backend=auto` 默认先探测本地平台 API 端口是否支持 `/audio/transcriptions`，再探测配置的 `local-asr-api`，再使用 skill 自带 Python Whisper 脚本。若本机没有 `whisper`，最后才使用 `scripts/setup_whisper_backend.py` 这条受控 setup 路线安装 `openai-whisper` 并下载/缓存模型，不允许 agent 临时拼 pip 命令、下载未知模型或猜测本地二进制入口。
 - ASR 脚本默认按音频文件断点续跑：可解析的 `.ja.asr.srt` 会跳过，只有 `.ja.asr.json` 时优先重建 SRT，并维护 `asr_manifest.json`。
 - ASR 优化必须谨慎：无 SE 音源优先；后端支持时可用 VAD 跳过长静音/纯环境声、用 overlap/stride 防止分段边界截断、把前一段 transcript 作为下一段 prompt/context、并保留分段级断点。不得因为 VAD 或切段漏掉低声耳语、喘息中的有效台词、重要停顿或安静对白；ASMR 重复喘息/耳舐/亲吻声后续可简化，不要让 ASR/翻译堆出无意义重复文本墙。
+- 双声道/多人耳语补漏只按需触发：用户指出漏字幕、QC/抽听发现疑似漏识别、或主 ASR 长空白但音频有声时，读取 `docs/channel_recovery.md`，用 `scripts/prepare_channel_recovery.py` 只对候选片段切左右声道。补漏结果是候选，不自动覆盖主 ASR 或最终字幕。
 - QC 脚本默认按 chunk 断点续跑，并使用动态 chunk：长句、高风险词密集、ASMR 成人内容密集时自动缩小 chunk；简单短对白可适当放大。只有调试或精确复现时才固定 chunk。
 - 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查或格式转换。
 
@@ -33,6 +34,7 @@
 | 只要求 SRT/VTT 转换 | 格式转换路线 | 确认源字幕结构 OK，再用 `export_final_subtitles.py` 按 `output_format` 导出 | `docs/task_routing.md`、必要时 workflow 导出段 | `validate_subtitles.py --final-dir` 或源目录结构检查；确认成品目录无中间产物 |
 | 只要求扫描/审阅 | 只读检查路线 | 不修改字幕；生成报告并总结问题 | `references/risk-notes.md`、`references/style.md` | 按请求跑结构、风险、可读性或 QC 审阅模板 |
 | 促销/试听/DLC/EX/bonus 音频存在 | 附加音频并行子路线 | 为附加音频建立独立或清晰命名的 ASR/SRT 工作目录，最终字幕同样导出到 `$FINAL_SUBTITLE_DIR` | 对应 workflow 的促销/附加音频段 | 附加音频单独结构、风险、可读性、QC，不复用本篇结论 |
+| 双人/多人左右耳语疑似漏识别 | 双声道补漏 ASR 子路线 | 保留主 ASR 时间轴，只对候选时间窗切 left/right clip 并单独 ASR | `docs/channel_recovery.md` | 补漏 review 后再决定是否修主 ASR；修后重跑结构、翻译/QC |
 
 ## 开工步骤
 
