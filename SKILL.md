@@ -19,9 +19,10 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
    - With script or official text: read `docs/asmr_subtitle_workflow_with_script.md`.
    - Audio only: read `docs/asmr_subtitle_workflow_no_script.md`.
 4. For platform/backend decisions, read `docs/platform_compatibility.md`.
-5. For stereo/multi-speaker ASMR ASR gap recovery, read `docs/channel_recovery.md`.
-6. When the user asks what this Skill can do or how to request work, refer them to `docs/user_guide.md`.
-7. For long-running repository work inside this development repo, append concise recovery notes to `docs/implementation_log.md`. This log is development-only and should not be copied into a packaged Skill unless explicitly requested.
+5. Before any production ASR, translation, or QC model call, read `docs/preflight_confirmation.md`.
+6. For stereo/multi-speaker ASMR ASR gap recovery, read `docs/channel_recovery.md`.
+7. When the user asks what this Skill can do or how to request work, refer them to `docs/user_guide.md`.
+8. For long-running repository work inside this development repo, append concise recovery notes to `docs/implementation_log.md`. This log is development-only and should not be copied into a packaged Skill unless explicitly requested.
 
 ## Agent Responsibilities
 
@@ -36,7 +37,7 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
 - Keep `.zh.srt` as the working format. Final output defaults to `.zh.vtt`; honor explicit user requests for `srt` or `both`.
 - Default `SOURCE_PROJECT_DIR` to the source ASMR work directory resolved from the audio path or RJ parent folder. Default `PROJECT_ROOT` to `$SOURCE_PROJECT_DIR/subtitle_project/` so project artifacts and intermediate files do not scatter across the source folder root.
 - Keep work artifacts under `PROJECT_ROOT` in named subfolders/files such as `asr_current/`, `srt_work/`, `qc_report.json`, and `project_config.json`. Keep deliverable subtitles under `FINAL_SUBTITLE_DIR`, which defaults to `$SOURCE_PROJECT_DIR/subtitles/`.
-- Before ASR or translation, scan the source work folder for all target audio. Unless the user explicitly asks to translate only the main story or only selected files, include main tracks, EX/free talk, bonus, DLC, extras, promo/trial samples, and other audio-like folders equally. Do not skip audio merely because its filename lacks a main-story number, has a promo/trial/DLC label, or appears outside the main audio folder.
+- Before ASR or translation, scan the source work folder for all target audio folders with `scripts/scan_audio_scope.py`, list the discovered folders to the user, and ask which folders or files should be translated in this run. Do not skip audio merely because its filename lacks a main-story number, has a promo/trial/DLC label, or appears outside the main audio folder. Process all discovered audio only when the user confirms `all`; otherwise honor the selected folders/files recorded in `run_profile.json`.
 - Treat `$PROJECT_ROOT/model_profile.json` as the user-editable stage model preference file. It may specify separate backend/base_url/model values for ASR, translation, and QC. It is not a secrets file; never store API keys in it.
 - Use scripts for checks instead of relying on eyeballing.
 - Use `scripts/subtitle_io.py` for local SRT parsing/composition; core workflow scripts should not require the third-party `srt` package.
@@ -59,10 +60,10 @@ python scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdi
 Use the returned `work_id`, `project_root`, `source_project_dir`, and `final_subtitle_dir` as `WORK_ID`, `PROJECT_ROOT`, `SOURCE_PROJECT_DIR`, and `FINAL_SUBTITLE_DIR`. This script scans file paths and parent folder names for `RJxxxx`; a source folder named `RJxxxx` is enough to identify the work. By default, `PROJECT_ROOT` is `$SOURCE_PROJECT_DIR/subtitle_project/` and `FINAL_SUBTITLE_DIR` is `$SOURCE_PROJECT_DIR/subtitles/`. If no RJ exists, use the script's fallback work ID or ask the user.
 
 2. Identify audio directories, script availability, existing `.ja.asr.srt`, existing `.zh.srt`/`.zh.vtt`, promo/trial/DLC/EX/bonus audio, desired output format, and the route from `docs/task_routing.md`.
-   - Translation scope defaults to every discovered audio target under the source work folder. Only narrow the scope when the user explicitly says to translate the main story only, skip promo/trial, skip DLC/bonus, or use a specific file list.
+   - Run `scripts/scan_audio_scope.py "$SOURCE_PROJECT_DIR" --json-out "$PROJECT_ROOT/audio_scope_report.json"` and ask the user which listed audio folders/files should be translated. Translation scope is not confirmed until it is written to `$PROJECT_ROOT/run_profile.json`.
    - If `WORK_ID` contains an RJ ID and network access is available/approved, fetch DLsite metadata with `scripts/fetch_dlsite_work_info.py` and save it as `$PROJECT_ROOT/dlsite_work_info.json`.
    - Treat DLsite title, circle, tags, and description as low-strength context, not as a transcript or proof against ASR/script evidence.
-   - Before new ASR, scan audio variants with `scripts/select_asr_audio_source.py`. If a no-SE version is detected, prefer it for ASR because recognition is usually cleaner; if the user explicitly requests another version, use the user-selected version.
+   - Before new ASR, scan audio variants with `scripts/select_asr_audio_source.py`. User-selected audio always wins. Otherwise, when no-SE files can be matched to regular audio by track, use only matched no-SE files with `requires_review=false` for ASR by default because recognition is usually cleaner. If a matched no-SE track has both MP3 and WAV candidates, prefer MP3 for faster ASR unless warnings suggest a cropped/preview/placeholder file; keep the final subtitle names mapped to the original work tracks.
 3. Default translation and QC model calls to an existing local OpenAI-compatible service port:
    - oMLX/common local server: `http://127.0.0.1:8000/v1`
    - LM Studio: `http://127.0.0.1:1234/v1`
@@ -118,7 +119,33 @@ ASR dependency rule: `--install-missing-python` is only for lightweight workflow
 
 ASR resume rule: ASR scripts resume by default at the audio-file level. They skip an audio file when a parseable `<track>.ja.asr.srt` already exists, rebuild SRT from `<track>.ja.asr.json` when possible, and write/update `$ASR_DIR/asr_manifest.json` after each skip, success, or error. Use `--force` only when the user wants to regenerate an already completed ASR file; use `--no-resume` only when debugging checkpoint behavior.
 
-ASR optimization rule: improve ASR cautiously and only when the selected backend/tool supports the option. Prefer no-SE audio for recognition unless the user chooses another version. For long or difficult audio, VAD may skip long silence or pure ambience, but it must not remove low-volume whispers, breaths, important pauses, or quiet dialogue. When splitting long audio, use overlap/stride to avoid boundary truncation, pass the previous segment transcript as prompt/context when supported, and record segment-level progress so interrupted runs can resume without discarding completed segments. Keep audio-file-level resume regardless. For ASMR breaths, ear-licking, kissing, and repeated sound effects, it is acceptable for final subtitles to simplify repeated noise; do not encourage ASR or later translation to generate meaningless repeated text walls.
+ASR optimization rule: improve ASR cautiously and only when the selected backend/tool supports the option. Prefer user-selected audio first; otherwise prefer no-SE audio only when track mapping is clear. If no-SE MP3 and WAV versions are both available for the same matched track, use MP3 first for speed, but fall back to WAV or ask for review when the MP3 looks cropped, preview-only, unusually tiny, or otherwise suspicious. For long or difficult audio, use `scripts/prepare_asr_audio_cache.py` to create `$PROJECT_ROOT/asr_prepared/` segment plans and optional normalized 16k mono audio. VAD may skip long silence or pure ambience only when supported and explicitly chosen, but it must not remove low-volume whispers, breaths, important pauses, or quiet dialogue. When splitting long audio, use overlap/stride to avoid boundary truncation, pass the previous segment transcript as prompt/context when supported, and record segment-level progress so interrupted runs can resume without discarding completed segments. Keep audio-file-level resume regardless. For ASMR breaths, ear-licking, kissing, and repeated sound effects, it is acceptable for final subtitles to simplify repeated noise; do not encourage ASR or later translation to generate meaningless repeated text walls.
+
+## Mandatory Preflight Confirmation
+
+Before starting production ASR, translation, or QC model calls, the agent must complete Preflight unless the current user request already explicitly provides every required choice.
+
+The agent must:
+
+1. Run `scripts/scan_audio_scope.py "$SOURCE_PROJECT_DIR" --json-out "$PROJECT_ROOT/audio_scope_report.json"`.
+2. List the discovered audio folders to the user and ask which folders or files should be translated. Trial, promo, DLC, EX, bonus, and other side folders must be shown rather than silently skipped. No-SE folders are ASR-source candidates, not automatic translation scope.
+3. Confirm quality mode: `draft`, `standard`, `premium`, or `polish`.
+4. Confirm ASR backend/base URL/model and whether existing `.ja.asr.srt` should be reused.
+5. Confirm translation backend/base URL/model.
+6. Confirm QC backend/base URL/model.
+7. Confirm output format: `vtt`, `srt`, or `both`.
+8. Write the confirmed choices to `$PROJECT_ROOT/run_profile.json` with `scripts/prepare_run_profile.py`.
+9. Sync confirmed stage model choices with `scripts/manage_model_profile.py sync-run-profile "$PROJECT_ROOT"` when a model profile should drive later commands.
+10. Before each model stage, run `scripts/check_preflight.py "$PROJECT_ROOT" --stage <asr|translate|qc>`.
+
+If any choice is missing, ambiguous, or inconsistent with the detected environment, stop and ask the user before model calls. If the user says "default" or "you decide", choose reasonable defaults, show the final choices, write `run_profile.json`, and only then continue.
+
+Quality mode mapping:
+
+- `draft`: `turbo` translation preset, QC tier `off`, fastest rough subtitle route.
+- `standard`: `fast` translation preset, QC tier `two-pass`, normal recommended route.
+- `premium`: `safe` translation preset, QC tier `two-pass`, slower and stricter.
+- `polish`: `safe` translation preset, QC tier `two-pass`, reuse existing ASR/translation when possible.
 
 Channel recovery rule: for suspected two-person stereo whisper gaps, do not run full-track left/right ASR by default. First use the normal main ASR timeline. After main ASR, the agent may run `scripts/detect_channel_activity.py` as a lightweight scan to find candidate windows from left/right energy plus main-ASR gaps or weak main-ASR coverage. Weak coverage includes output like `...`, `……`, very short breaths/onomatopoeia, trigger sounds, or very low text density over a long active audio span. This scan is candidate-only and may confuse ASMR effects with speech. If candidates are marked for user disambiguation, explicitly warn the user that the segment may be speech or may be ASMR sound effects/BGM/breaths and needs review. If the user points to missing speech, QC/listening finds a gap/weak-coverage span, or the detector finds candidates worth checking, use `scripts/prepare_channel_recovery.py` to create left/right candidate clips under `$PROJECT_ROOT/channel_recovery/<track>/`. Transcribe those clips with the resolved ASR backend, review them as candidates, and only merge clear missing speech after evidence review. Channel recovery output must not automatically overwrite the main ASR or final subtitles.
 
@@ -138,9 +165,9 @@ Local model invocation discipline: when a workflow step says translation, mandat
 
 Use the selected workflow doc for exact commands. The normal sequence is:
 
-1. ASR to Japanese `.ja.asr.srt`, or reuse existing `.ja.asr.srt` files if they already pass structure checks. New ASR requires a resolved ASR route from `scripts/resolve_asr_route.py`. When multiple audio variants exist, prefer no-SE audio for ASR unless the user chooses another version.
+1. ASR to Japanese `.ja.asr.srt`, or reuse existing `.ja.asr.srt` files if they already pass structure checks. New ASR requires a resolved ASR route from `scripts/resolve_asr_route.py`. When multiple audio variants exist, use `scripts/select_asr_audio_source.py`: user-selected audio wins; otherwise prefer matched no-SE files, with no-SE MP3 preferred over no-SE WAV for the same track unless warnings require review.
 2. Structure check against expected SRT shape when files exist.
-3. Translate to Chinese `.zh.srt`. Prefer semantic dynamic chunks with halo context: use `scripts/translate_srt_omlx.py` or `scripts/batch_translate_srt_omlx.py` with `--chunk-mode dynamic`, `--target-chars`, `--hard-chars`, `--min-chunk-size`, `--max-chunk-size`, `--context-before`, and `--context-after`. The halo is only for context; the model must output target indexes only, and every target index must be covered. Translation creates `<file>.zh.srt.flags.json` with optional focus flags such as `asr_uncertain`, `adult_term`, `speaker_ambiguous`, `pronoun_ambiguous`, `onomatopoeia`, `long_line`, `possible_noise`, and `needs_context`.
+3. Translate to Chinese `.zh.srt`. Prefer semantic dynamic chunks with halo context: use `scripts/translate_srt_omlx.py` or `scripts/batch_translate_srt_omlx.py` with `--preset fast` for standard work, `safe` for premium work, or `turbo` for draft work. These presets expand to dynamic chunk settings with `--target-chars`, `--hard-chars`, `--min-chunk-size`, `--max-chunk-size`, `--context-before`, and `--context-after`. The halo is only for context; the model must output target indexes only, and every target index must be covered. Translation creates `<file>.zh.srt.flags.json` with optional focus flags such as `asr_uncertain`, `adult_term`, `speaker_ambiguous`, `pronoun_ambiguous`, `onomatopoeia`, `long_line`, `possible_noise`, and `needs_context`. Translation chunk cache is stored under `<output_stem>.translate_chunks/` by default and may only be reused when the chunk signature matches content, target indexes, halo, model, base URL, prompt/schema version, and chunk settings.
 4. Run structure validation:
 
 ```bash
@@ -175,7 +202,7 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 - Model QC means calling the resolved configured QC chat model through `scripts/qc_srt_omlx.py` or an equivalent explicit local/configured `/chat/completions` route. It does not mean the agent reads subtitles and performs QC with its own model.
 - QC runs with chunk-level resume by default. `scripts/qc_srt_omlx.py` stores successful chunk outputs under `<qc_report_stem>_chunks/` and records a manifest there, so interrupted QC runs should resume instead of repeating completed chunks.
 - QC chunking defaults to `--chunk-mode dynamic`: the script shrinks chunks around long, high-risk, or dense ASMR content and can let simple short dialogue run larger. Use halo context with `--context-halo`; halo items are context only and must not be returned as QC targets.
-- For speed-sensitive production runs, prefer `--qc-tier two-pass`: first run full light QC with larger semantic chunks, then run focused deep QC on high-risk spans selected from translation flags, risk terms, long lines, residual Japanese/garbage text, and neighboring context. Use `--qc-tier standard` for the old single-pass behavior, `light` for quick scans, and `deep` for focused reruns.
+- QC tier defaults to `--qc-tier two-pass`: first run full light QC with larger semantic chunks, then run focused deep QC on high-risk spans selected from translation flags, risk terms, long lines, residual Japanese/garbage text, and neighboring context. Use `--qc-tier standard` only for the old single-pass behavior, `light` for quick scans, and `deep` for focused reruns.
 - QC cache signatures are chunk-local. They include target items, halo items, translation flags, model, base URL, prompt/schema version, chunk settings, and context, but do not include whole-file fingerprints. Existing manifests should be reused for stable chunk boundaries when possible so small subtitle edits only invalidate nearby affected chunks.
 - The agent must correct all clear issues from `qc_report.json`, then rerun structure validation, risk scan, and readability checks.
 - If the user is still dissatisfied after the mandatory QC pass, treat additional correction as an optional QC refinement feature, not as the baseline QC step.

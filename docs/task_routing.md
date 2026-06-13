@@ -8,8 +8,8 @@
 - 开工第一步必须用 `scripts/resolve_project_context.py` 从源路径和父目录解析 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR` 与 `FINAL_SUBTITLE_DIR`。源文件夹名是 `RJxxxx` 时必须识别为作品号。
 - `SOURCE_PROJECT_DIR` 默认就是源 ASMR 作品目录，即识别到的 RJ 父目录或音频源上级作品目录；不再默认创建 `generated_subtitles/<WORK_ID>`。除非用户明确指定 `--output-root` 或 `--project-root`，不要把项目输出另放到工作区。
 - `PROJECT_ROOT` 默认是 `$SOURCE_PROJECT_DIR/subtitle_project/`，用于工程文件和中间文件；最终 `.zh.vtt/.zh.srt` 放在 `$FINAL_SUBTITLE_DIR`，默认是 `$SOURCE_PROJECT_DIR/subtitles/`。
-- 若音频包里同时存在有 SE/无 SE 版本，默认优先用无 SE 版本跑 ASR；如果用户明确指定要用其他版本，则用户指定优先。
-- 翻译范围默认是源作品文件夹下发现的全部目标音频：本篇、EX/free talk、bonus、DLC、特典、促销/试听都一视同仁。不要仅凭编号、目录名或“看起来不是正片”跳过音频。只有用户明确说“只翻正片”“跳过促销/试听”“跳过 DLC/特典”或给出具体文件列表时，才缩小范围，并把这个 scope 写入项目记录。
+- 若音频包里同时存在有 SE/无 SE 版本，用户指定音源优先；未指定时，用 `scripts/select_asr_audio_source.py` 按轨道匹配。只有能和普通音频对齐且 `requires_review=false` 的无 SE 文件才作为默认 ASR 输入；同轨道无 SE 同时有 MP3/WAV 时默认选 MP3，除非报告提示疑似试听、裁剪、占位或映射不清。
+- 翻译范围必须在 Preflight 阶段确认。先用 `scripts/scan_audio_scope.py` 列出源作品文件夹下发现的音频文件夹，再询问用户本轮要翻译哪些文件夹或具体文件。试听、DLC、EX/free talk、bonus、特典等不能被默认歧视或跳过；只有用户确认 `all` 时才全量处理，用户选择部分文件夹/文件时，把这个 scope 写入 `run_profile.json`。
 - 默认最终输出为 `.zh.vtt`；用户可明确选择 `srt` 或 `both`。`.zh.srt` 默认仍是工作中间稿。
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
 - 翻译和 QC chunk 以语义连续性优先，字符/token 预算只作为上限。优先使用动态 chunk 和 halo 上下文；halo 只用于理解，不要求模型输出上下文编号。
@@ -17,10 +17,10 @@
 - 翻译阶段生成的 `<file>.zh.srt.flags.json` 可用于后续 QC 分流。速度敏感时，QC 优先用 `--qc-tier two-pass`：全量轻 QC + 高风险深 QC。
 - 新跑 ASR 前必须先用 `scripts/resolve_asr_route.py` 做只读分流；`asr_backend=auto` 默认先探测本地平台 API 端口是否支持 `/audio/transcriptions`，再探测配置的 `local-asr-api`，再使用 skill 自带 Python Whisper 脚本。若本机没有 `whisper`，最后才使用 `scripts/setup_whisper_backend.py` 这条受控 setup 路线安装 `openai-whisper` 并下载/缓存模型，不允许 agent 临时拼 pip 命令、下载未知模型或猜测本地二进制入口。
 - ASR 脚本默认按音频文件断点续跑：可解析的 `.ja.asr.srt` 会跳过，只有 `.ja.asr.json` 时优先重建 SRT，并维护 `asr_manifest.json`。
-- ASR 优化必须谨慎：无 SE 音源优先；后端支持时可用 VAD 跳过长静音/纯环境声、用 overlap/stride 防止分段边界截断、把前一段 transcript 作为下一段 prompt/context、并保留分段级断点。不得因为 VAD 或切段漏掉低声耳语、喘息中的有效台词、重要停顿或安静对白；ASMR 重复喘息/耳舐/亲吻声后续可简化，不要让 ASR/翻译堆出无意义重复文本墙。
+- ASR 优化必须谨慎：用户指定音源优先；未指定时才优先可对齐的无 SE 音源，并在同轨道无 SE MP3/WAV 中优先 MP3。后端支持时可用 VAD 跳过长静音/纯环境声、用 overlap/stride 防止分段边界截断、把前一段 transcript 作为下一段 prompt/context、并保留分段级断点。不得因为 VAD 或切段漏掉低声耳语、喘息中的有效台词、重要停顿或安静对白；ASMR 重复喘息/耳舐/亲吻声后续可简化，不要让 ASR/翻译堆出无意义重复文本墙。
 - 双声道/多人耳语补漏只按需触发：主 ASR 后可用 `scripts/detect_channel_activity.py` 做轻量候选扫描；用户指出漏字幕、QC/抽听发现疑似漏识别、或检测到主 ASR 长空白/弱覆盖但音频有声时，读取 `docs/channel_recovery.md`，用 `scripts/prepare_channel_recovery.py` 只对候选片段切左右声道。弱覆盖包括省略号、极短喘息/拟声/触发音、或长时间音频只对应极短文本。检测不确定时必须提醒用户甄别；补漏结果是候选，不自动覆盖主 ASR 或最终字幕。
-- QC 脚本默认按 chunk 断点续跑，并使用动态 chunk：长句、高风险词密集、ASMR 成人内容密集时自动缩小 chunk；简单短对白可适当放大。只有调试或精确复现时才固定 chunk。
-- 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查或格式转换。
+- QC 脚本默认按 chunk 断点续跑，使用动态 chunk 和 `two-pass`：先全量 light QC，再对风险窗口 deep QC。长句、高风险词密集、ASMR 成人内容密集时自动缩小 chunk；简单短对白可适当放大。只有调试或精确复现旧结果时才固定 chunk 或改回 `standard`。
+- 每条路线都必须在交付前完成结构校验、风险扫描、ASMR 可读性检查、第一轮强制模型 QC 和学习库更新，除非用户明确只要求一个只读检查、格式转换，或在 Preflight 中选择 `draft` 粗烤模式。
 
 ## 路线表
 
@@ -39,15 +39,17 @@
 ## 开工步骤
 
 1. 运行 `scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json`，确定 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR` 和 `SOURCE_AUDIO_DIR`。
-2. 递归识别源作品文件夹下的目标音频目录和文件，包括本篇、EX/free talk、bonus、DLC、特典、促销/试听；记录总数和分类。不要只看主线编号决定跳过文件。
+2. 运行 `scripts/scan_audio_scope.py "$SOURCE_PROJECT_DIR" --json-out "$PROJECT_ROOT/audio_scope_report.json"`，递归识别源作品文件夹下的目标音频目录和文件，包括本篇、EX/free talk、bonus、DLC、特典、促销/试听；记录总数和分类。不要只看主线编号决定跳过文件。
 3. 如果识别到 RJ 号且允许联网，先用 `scripts/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `$PROJECT_ROOT/dlsite_work_info.json`。抓取失败不阻塞流程。
-4. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；无 SE 只是默认推荐，用户指定版本时用用户指定。
-5. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
-6. 按路线读取有台本或无台本 workflow。
-7. 创建或更新 `$PROJECT_ROOT/project_config.json`。
-8. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
-9. 如果本轮必须新跑 ASR，跑 `scripts/resolve_asr_route.py --config "$PROJECT_ROOT/project_config.json" --require-new-asr`。若返回 `blocked`，停下向用户确认 ASR 路线。
-10. 进入对应 workflow 的执行步骤。
+4. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；用户指定版本时用用户指定，否则按 `recommended_asr_files` 使用可对齐且 `requires_review=false` 的无 SE 文件，同轨道 MP3 优先于 WAV，warning 项先核对。
+5. 读取 `docs/preflight_confirmation.md`，向用户确认音频文件夹范围、质量模式、ASR/翻译/QC 模型、输出格式；确认后用 `scripts/prepare_run_profile.py` 写入 `$PROJECT_ROOT/run_profile.json`。
+6. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
+7. 按路线读取有台本或无台本 workflow。
+8. 创建或更新 `$PROJECT_ROOT/project_config.json` 和 `$PROJECT_ROOT/model_profile.json`。
+9. 跑 `scripts/check_environment.py`；只有本轮必须新跑 ASR 时才加 `--require-asr`。
+10. 任何 ASR/翻译/QC 模型调用前，先跑 `scripts/check_preflight.py "$PROJECT_ROOT" --stage <asr|translate|qc>`。
+11. 如果本轮必须新跑 ASR，跑 `scripts/resolve_asr_route.py --config "$PROJECT_ROOT/project_config.json" --require-new-asr`。若返回 `blocked`，停下向用户确认 ASR 路线。
+12. 进入对应 workflow 的执行步骤。
 
 ## 模型任务边界
 

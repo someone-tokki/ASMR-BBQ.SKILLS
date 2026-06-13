@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from tqdm import tqdm
 
@@ -32,6 +35,41 @@ ALLOWED_FLAGS = {
     "long_line",
     "possible_noise",
     "needs_context",
+}
+
+PROMPT_VERSION = "translate-v2"
+
+PRESETS = {
+    "safe": {
+        "chunk_mode": "dynamic",
+        "chunk_size": 12,
+        "min_chunk_size": 6,
+        "max_chunk_size": 24,
+        "target_chars": 900,
+        "hard_chars": 1300,
+        "context_before": 3,
+        "context_after": 3,
+    },
+    "fast": {
+        "chunk_mode": "dynamic",
+        "chunk_size": 18,
+        "min_chunk_size": 8,
+        "max_chunk_size": 32,
+        "target_chars": 1400,
+        "hard_chars": 2200,
+        "context_before": 2,
+        "context_after": 2,
+    },
+    "turbo": {
+        "chunk_mode": "dynamic",
+        "chunk_size": 24,
+        "min_chunk_size": 10,
+        "max_chunk_size": 40,
+        "target_chars": 1800,
+        "hard_chars": 2600,
+        "context_before": 1,
+        "context_after": 1,
+    },
 }
 
 
@@ -150,6 +188,112 @@ def translate_chunk(
     return result, flags
 
 
+def now_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def stable_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def chunk_range(chunk: Chunk) -> tuple[int, int]:
+    return chunk.target_indexes[0], chunk.target_indexes[-1]
+
+
+def chunk_signature(
+    *,
+    chunk: Chunk,
+    context_before: list[dict[str, Any]],
+    context_after: list[dict[str, Any]],
+    model: str,
+    base_url: str,
+    settings: dict[str, Any],
+) -> str:
+    payload = {
+        "prompt_version": PROMPT_VERSION,
+        "model": model,
+        "base_url": base_url.rstrip("/"),
+        "settings": settings,
+        "target_indexes": chunk.target_indexes,
+        "items": chunk.items,
+        "context_before": context_before,
+        "context_after": context_after,
+    }
+    return hashlib.sha256(stable_json(payload).encode("utf-8")).hexdigest()
+
+
+def chunk_cache_path(cache_dir: Path, *, chunk_no: int, start_i: int, end_i: int) -> Path:
+    return cache_dir / f"chunk_{chunk_no:04d}_{start_i}-{end_i}.json"
+
+
+def load_cached_chunk(path: Path, signature: str) -> tuple[dict[int, str], dict[int, list[str]]] | None:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if data.get("status") != "ok" or data.get("signature") != signature:
+        return None
+    translations = {int(key): str(value) for key, value in data.get("translations", {}).items()}
+    flags = {int(key): list(value) for key, value in data.get("flags", {}).items()}
+    return translations, flags
+
+
+def write_cached_chunk(
+    path: Path,
+    *,
+    signature: str,
+    chunk: Chunk,
+    translations: dict[int, str],
+    flags: dict[int, list[str]],
+    model: str,
+    base_url: str,
+    settings: dict[str, Any],
+    duration_sec: float,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "status": "ok",
+                "signature": signature,
+                "prompt_version": PROMPT_VERSION,
+                "model": model,
+                "base_url": base_url.rstrip("/"),
+                "settings": settings,
+                "summary": chunk_summary(chunk),
+                "target_indexes": chunk.target_indexes,
+                "translations": {str(key): value for key, value in translations.items()},
+                "flags": {str(key): value for key, value in flags.items()},
+                "duration_sec": duration_sec,
+                "updated_at": now_utc(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_profile(path: Path, data: dict[str, Any]) -> None:
+    if not path:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def apply_preset(args: argparse.Namespace) -> None:
+    if not args.preset:
+        return
+    preset = PRESETS[args.preset]
+    for key, value in preset.items():
+        if getattr(args, key) is None:
+            setattr(args, key, value)
+
+
 def completed_chunk_count(chunks: list[Chunk], translations: dict[int, str]) -> int:
     return sum(1 for chunk in chunks if all(int(item["i"]) in translations for item in chunk.items))
 
@@ -175,21 +319,28 @@ def main() -> int:
     parser.add_argument("--model", default="Qwen3.6-27B-MLX-VL-oQ6")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--api-key", required=True)
-    parser.add_argument("--chunk-size", type=int, default=18)
-    parser.add_argument("--chunk-mode", choices=["dynamic", "fixed"], default="fixed")
-    parser.add_argument("--min-chunk-size", type=int, default=6)
-    parser.add_argument("--max-chunk-size", type=int, default=24)
-    parser.add_argument("--target-chars", type=int, default=900)
-    parser.add_argument("--hard-chars", type=int, default=1300)
-    parser.add_argument("--context-before", type=int, default=3)
-    parser.add_argument("--context-after", type=int, default=3)
+    parser.add_argument("--preset", choices=sorted(PRESETS), default="fast")
+    parser.add_argument("--chunk-size", type=int, default=None)
+    parser.add_argument("--chunk-mode", choices=["dynamic", "fixed"], default=None)
+    parser.add_argument("--min-chunk-size", type=int, default=None)
+    parser.add_argument("--max-chunk-size", type=int, default=None)
+    parser.add_argument("--target-chars", type=int, default=None)
+    parser.add_argument("--hard-chars", type=int, default=None)
+    parser.add_argument("--context-before", type=int, default=None)
+    parser.add_argument("--context-after", type=int, default=None)
     parser.add_argument("--flags-out", default="", help="Write translation risk flags JSON. Defaults to <output>.flags.json.")
     parser.add_argument("--manifest-out", default="", help="Write translation chunk manifest. Defaults to <output>.translate_manifest.json.")
+    parser.add_argument("--chunk-cache-dir", default="", help="Directory for resumable translation chunk cache. Defaults to <output_stem>.translate_chunks.")
+    parser.add_argument("--no-resume", dest="resume", action="store_false", help="Ignore cached successful translation chunks.")
+    parser.add_argument("--force", action="store_true", help="Rerun all translation chunks even if cached chunks exist.")
+    parser.add_argument("--profile", default="", help="Write per-file translation timing profile JSON.")
     parser.add_argument("--plan-only", action="store_true", help="Build translation chunk manifest without calling the model.")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--sleep", type=float, default=0.0)
     parser.add_argument("--progress-position", type=int, default=0)
+    parser.set_defaults(resume=True)
     args = parser.parse_args()
+    apply_preset(args)
 
     input_path = Path(args.input_srt)
     output_path = Path(args.output_srt)
@@ -200,6 +351,13 @@ def main() -> int:
         if args.manifest_out
         else output_path.with_suffix(output_path.suffix + ".translate_manifest.json")
     )
+    chunk_cache_dir = (
+        Path(args.chunk_cache_dir)
+        if args.chunk_cache_dir
+        else output_path.parent / f"{output_path.stem}.translate_chunks"
+    )
+    profile_path = Path(args.profile) if args.profile else None
+    started = time.monotonic()
     subs = parse_srt_text(input_path.read_text(encoding="utf-8"))
     translations: dict[int, str] = {}
     flags: dict[int, list[str]] = {}
@@ -227,9 +385,12 @@ def main() -> int:
     initial_chunks = completed_chunk_count(chunks, translations)
     manifest = {
         "version": 1,
+        "prompt_version": PROMPT_VERSION,
         "input_srt": input_path.as_posix(),
         "output_srt": output_path.as_posix(),
+        "chunk_cache_dir": chunk_cache_dir.as_posix(),
         "settings": {
+            "preset": args.preset,
             "chunk_mode": args.chunk_mode,
             "chunk_size": args.chunk_size,
             "min_chunk_size": args.min_chunk_size,
@@ -241,7 +402,7 @@ def main() -> int:
             "model": args.model,
             "base_url": args.base_url.rstrip("/"),
         },
-        "chunks": [chunk_summary(chunk) for chunk in chunks],
+        "chunks": [],
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -258,17 +419,51 @@ def main() -> int:
         position=args.progress_position,
         bar_format="{l_bar}{bar:32}| {n_fmt}/{total_fmt} {unit} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
     ) as progress:
+        chunk_durations: list[float] = []
+        cached_chunks = 0
+        retried_chunks = 0
         for chunk in chunks:
             if all(int(item["i"]) in translations for item in chunk.items):
+                summary = chunk_summary(chunk)
+                summary["status"] = "partial_json"
+                manifest["chunks"].append(summary)
                 continue
             progress.set_postfix_str(progress_postfix(chunk, len(subs), len(translations)))
+            context_before = chunk.context_before[-args.context_before :] if args.context_before else []
+            context_after = chunk.context_after[: args.context_after] if args.context_after else []
+            signature = chunk_signature(
+                chunk=chunk,
+                context_before=context_before,
+                context_after=context_after,
+                model=args.model,
+                base_url=args.base_url,
+                settings=manifest["settings"],
+            )
+            start_i, end_i = chunk_range(chunk)
+            cache_path = chunk_cache_path(chunk_cache_dir, chunk_no=chunk.chunk_no, start_i=start_i, end_i=end_i)
+            cached = None if args.force or not args.resume else load_cached_chunk(cache_path, signature)
+            if cached:
+                cached_translations, cached_flags = cached
+                translations.update(cached_translations)
+                flags.update(cached_flags)
+                cached_chunks += 1
+                summary = chunk_summary(chunk)
+                summary["status"] = "cached"
+                summary["signature"] = signature
+                summary["cache_path"] = cache_path.as_posix()
+                manifest["chunks"].append(summary)
+                progress.update(1)
+                continue
             last_error: Exception | None = None
+            chunk_started = time.monotonic()
+            attempt_count = 0
             for attempt in range(1, 4):
+                attempt_count = attempt
                 try:
                     translated, chunk_flags = translate_chunk(
                         chunk.items,
-                        chunk.context_before[-args.context_before :] if args.context_before else [],
-                        chunk.context_after[: args.context_after] if args.context_after else [],
+                        context_before,
+                        context_after,
                         url=url,
                         api_key=args.api_key,
                         model=args.model,
@@ -285,6 +480,29 @@ def main() -> int:
             else:
                 indexes = chunk.target_indexes
                 raise RuntimeError(f"Failed chunk {indexes[0]}-{indexes[-1]}") from last_error
+            duration_sec = time.monotonic() - chunk_started
+            chunk_durations.append(duration_sec)
+            if attempt_count > 1:
+                retried_chunks += 1
+            write_cached_chunk(
+                cache_path,
+                signature=signature,
+                chunk=chunk,
+                translations=translated,
+                flags=chunk_flags,
+                model=args.model,
+                base_url=args.base_url,
+                settings=manifest["settings"],
+                duration_sec=duration_sec,
+            )
+            summary = chunk_summary(chunk)
+            summary["status"] = "ok"
+            summary["signature"] = signature
+            summary["cache_path"] = cache_path.as_posix()
+            summary["duration_sec"] = duration_sec
+            summary["attempts"] = attempt_count
+            manifest["chunks"].append(summary)
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             partial_path.write_text(
                 json.dumps({"translations": translations, "flags": flags}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -308,6 +526,26 @@ def main() -> int:
     flags_path.write_text(json.dumps(flags, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if partial_path.exists():
         partial_path.unlink()
+    finished = time.monotonic()
+    profile = {
+        "version": 1,
+        "stage": "translate",
+        "input_srt": input_path.as_posix(),
+        "output_srt": output_path.as_posix(),
+        "duration_sec": finished - started,
+        "chunks": total_chunks,
+        "cached_chunks": cached_chunks if "cached_chunks" in locals() else 0,
+        "retried_chunks": retried_chunks if "retried_chunks" in locals() else 0,
+        "avg_uncached_sec_per_chunk": (
+            sum(chunk_durations) / len(chunk_durations) if "chunk_durations" in locals() and chunk_durations else 0.0
+        ),
+        "settings": manifest["settings"],
+        "updated_at": now_utc(),
+    }
+    if profile_path:
+        write_profile(profile_path, profile)
+    manifest["profile"] = profile
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(output_path)
     return 0
 

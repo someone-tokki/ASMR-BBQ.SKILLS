@@ -46,6 +46,27 @@ WITH_SE_PATTERNS = [
     r"効果音\s*入り",
 ]
 
+TRIAL_OR_LOW_CONFIDENCE_PATTERNS = [
+    r"体験版",
+    r"試聴",
+    r"试听",
+    r"sample",
+    r"demo",
+    r"preview",
+]
+
+EXTENSION_PRIORITY = {
+    ".mp3": 0,
+    ".wav": 1,
+    ".wave": 1,
+    ".flac": 2,
+    ".m4a": 3,
+    ".aac": 4,
+    ".opus": 5,
+    ".ogg": 6,
+    ".wma": 7,
+}
+
 
 @dataclass
 class AudioFile:
@@ -53,6 +74,21 @@ class AudioFile:
     directory: str
     category: str
     reason: str
+    extension: str
+    track_key: str
+    size_bytes: int
+
+
+@dataclass
+class SelectedAsrFile:
+    track_key: str
+    path: str
+    directory: str
+    extension: str
+    matched_counterparts: list[str]
+    selection_reason: str
+    warnings: list[str]
+    requires_review: bool
 
 
 def normalize_text(value: str) -> str:
@@ -65,6 +101,7 @@ def compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
 
 NO_SE_RE = compile_patterns(NO_SE_PATTERNS)
 WITH_SE_RE = compile_patterns(WITH_SE_PATTERNS)
+TRIAL_OR_LOW_CONFIDENCE_RE = compile_patterns(TRIAL_OR_LOW_CONFIDENCE_PATTERNS)
 
 
 def classify(path: Path) -> tuple[str, str]:
@@ -76,6 +113,42 @@ def classify(path: Path) -> tuple[str, str]:
         if pattern.search(text):
             return "with_se", pattern.pattern
     return "unknown", ""
+
+
+def track_key(path: Path) -> str:
+    text = normalize_text(path.stem)
+    for pattern in [*NO_SE_RE, *WITH_SE_RE]:
+        text = pattern.sub("", text)
+    text = re.sub(r"\b(wav|wave|mp3|flac|m4a|aac|ogg|opus|wma)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[\s\-_.,，。・、/\\()[\]{}【】「」『』]+", "", text)
+    return text or normalize_text(path.stem)
+
+
+def extension_priority(path_text: str) -> int:
+    return EXTENSION_PRIORITY.get(Path(path_text).suffix.lower(), 99)
+
+
+def path_warnings(path_text: str, size_bytes: int) -> list[str]:
+    warnings: list[str] = []
+    normalized = normalize_text(path_text)
+    for pattern in TRIAL_OR_LOW_CONFIDENCE_RE:
+        if pattern.search(normalized):
+            warnings.append("name_suggests_trial_or_preview_verify_scope")
+            break
+    if size_bytes < 256 * 1024:
+        warnings.append("very_small_audio_file_verify_not_placeholder")
+    return warnings
+
+
+def choose_preferred_no_se(candidates: list[AudioFile]) -> AudioFile:
+    return sorted(
+        candidates,
+        key=lambda item: (
+            len(path_warnings(item.path, item.size_bytes)),
+            extension_priority(item.path),
+            item.path,
+        ),
+    )[0]
 
 
 def iter_audio_files(root: Path) -> list[Path]:
@@ -107,6 +180,9 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
                     directory=rel(audio_path.parent, common_base),
                     category=category,
                     reason=reason,
+                    extension=audio_path.suffix.lower(),
+                    track_key=track_key(audio_path),
+                    size_bytes=audio_path.stat().st_size,
                 )
             )
 
@@ -120,6 +196,54 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
         {"directory": directory, "audio_count": count}
         for directory, count in sorted(no_se_dirs.items(), key=lambda item: (-item[1], item[0]))
     ]
+    by_key: defaultdict[str, list[AudioFile]] = defaultdict(list)
+    for item in files:
+        by_key[item.track_key].append(item)
+
+    selected_files: list[SelectedAsrFile] = []
+    unmatched_no_se: list[dict] = []
+    unmatched_regular: list[dict] = []
+    duplicate_no_se_groups: list[dict] = []
+
+    for key, items in sorted(by_key.items()):
+        no_se_items = [item for item in items if item.category == "no_se"]
+        regular_items = [item for item in items if item.category != "no_se"]
+        if no_se_items:
+            preferred = choose_preferred_no_se(no_se_items)
+            warnings = path_warnings(preferred.path, preferred.size_bytes)
+            reason_parts = ["prefer_no_se"]
+            if preferred.extension == ".mp3":
+                reason_parts.append("mp3_preferred_for_faster_asr_when_track_matches")
+            elif any(item.extension == ".mp3" for item in no_se_items):
+                reason_parts.append("mp3_candidate_not_selected_due_warning_or_tie_break")
+            if regular_items:
+                reason_parts.append("matched_regular_audio_exists")
+            else:
+                reason_parts.append("no_regular_counterpart_detected_verify_mapping")
+                unmatched_no_se.extend(asdict(item) for item in no_se_items)
+            if len(no_se_items) > 1:
+                duplicate_no_se_groups.append(
+                    {
+                        "track_key": key,
+                        "candidates": [asdict(item) for item in sorted(no_se_items, key=lambda item: item.path)],
+                        "selected": preferred.path,
+                    }
+                )
+            selected_files.append(
+                SelectedAsrFile(
+                    track_key=key,
+                    path=preferred.path,
+                    directory=preferred.directory,
+                    extension=preferred.extension,
+                    matched_counterparts=[item.path for item in sorted(regular_items, key=lambda item: item.path)],
+                    selection_reason=", ".join(reason_parts),
+                    warnings=warnings,
+                    requires_review=not regular_items or bool(warnings),
+                )
+            )
+        else:
+            unmatched_regular.extend(asdict(item) for item in items)
+
     if user_selected:
         category, reason = classify(user_selected)
         decision = "user_override"
@@ -132,14 +256,26 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
                 "reason": reason,
             }
         ]
+        selected_files = []
+        unmatched_no_se = []
+        unmatched_regular = []
+        duplicate_no_se_groups = []
         notes = [
             "The user explicitly selected an ASR audio source. Use the user-selected version even if a no-SE variant is detected.",
             "No-SE audio remains only a default preference when the user has not specified another version.",
         ]
-    elif recommended:
-        decision = "prefer_no_se"
+    elif selected_files and any(item.matched_counterparts for item in selected_files):
+        decision = "prefer_aligned_no_se"
         notes = [
-            "No-SE audio was detected. Prefer the recommended no-SE directory/files for ASR when timing appears compatible with the delivery audio and the user has not requested another version.",
+            "No-SE audio was detected and at least one track matches a regular audio counterpart. Use recommended_asr_files entries with matched_counterparts and requires_review=false for ASR by default when the user has not requested another version.",
+            "When the same no-SE track has MP3 and WAV candidates, MP3 is selected first for speed unless the filename/size raises a warning; verify duration/track mapping when warnings are present.",
+            "Use only matched no-SE audio for tracks that align with regular audio. If a no-SE track has no regular counterpart, verify it before treating it as the canonical ASR source.",
+            "No-SE is an ASR source preference only. Deliver final subtitles to the configured final_subtitle_dir, normally the source ASMR work directory's subtitles folder.",
+        ]
+    elif selected_files:
+        decision = "prefer_no_se_unpaired"
+        notes = [
+            "No-SE audio was detected, but no regular counterpart with the same normalized track name was found. Prefer it only after verifying it is the intended full track and not a cropped/preview/alternate file.",
             "No-SE is an ASR source preference only. Deliver final subtitles to the configured final_subtitle_dir, normally the source ASMR work directory's subtitles folder.",
         ]
     elif files:
@@ -154,6 +290,10 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
         "audio_count": len(files),
         "counts": dict(counts),
         "recommended_asr_inputs": recommended,
+        "recommended_asr_files": [asdict(item) for item in selected_files],
+        "unmatched_no_se_files": unmatched_no_se,
+        "unmatched_regular_files": unmatched_regular,
+        "duplicate_no_se_groups": duplicate_no_se_groups,
         "files": [asdict(item) for item in files],
         "notes": notes,
     }
@@ -170,6 +310,16 @@ def print_report(report: dict) -> None:
         print("\nRecommended ASR input(s):")
         for item in recommendations:
             print(f"- {item['directory']} ({item['audio_count']} audio file(s))")
+    selected = report.get("recommended_asr_files", [])
+    if selected:
+        print("\nRecommended ASR file(s):")
+        for item in selected:
+            match_count = len(item.get("matched_counterparts", []))
+            warning_suffix = f" warnings={','.join(item['warnings'])}" if item.get("warnings") else ""
+            review_suffix = " requires_review=true" if item.get("requires_review") else ""
+            print(f"- {item['path']} [{item['extension']}; matched_counterparts={match_count}]{warning_suffix}{review_suffix}")
+    if report.get("unmatched_no_se_files"):
+        print(f"\nUnmatched no-SE files: {len(report['unmatched_no_se_files'])} (verify before using as canonical ASR source)")
     print("\nNotes:")
     for note in report.get("notes", []):
         print(f"- {note}")

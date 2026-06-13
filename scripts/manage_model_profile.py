@@ -64,6 +64,12 @@ def config_path(project_root: Path) -> Path:
     return project_root / "project_config.json"
 
 
+def run_profile_path(project_root: Path) -> Path:
+    if project_root.name == "run_profile.json":
+        return project_root
+    return project_root / "run_profile.json"
+
+
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -106,6 +112,35 @@ def merge_project_config(profile: dict[str, Any], config: dict[str, Any]) -> dic
         stages.setdefault("qc", {})["backend"] = models.get("qc_backend")
     if models.get("qc_model"):
         stages.setdefault("qc", {})["model"] = models.get("qc_model")
+    return profile
+
+
+def merge_run_profile(profile: dict[str, Any], run_profile: dict[str, Any]) -> dict[str, Any]:
+    stages = run_profile.get("stages", {}) if isinstance(run_profile.get("stages"), dict) else {}
+    target = profile.setdefault("stages", {})
+    for stage_name in STAGES:
+        source = stages.get(stage_name, {}) if isinstance(stages.get(stage_name), dict) else {}
+        if not source:
+            continue
+        stage_data = target.setdefault(stage_name, {})
+        for key in ("backend", "base_url", "model"):
+            value = source.get(key)
+            if value:
+                stage_data[key] = value
+        if stage_name == "asr":
+            stage_data.setdefault("interface", "/audio/transcriptions")
+        else:
+            stage_data.setdefault("interface", "/chat/completions")
+    profile["updated_at"] = now_utc()
+    profile.setdefault("stage_overrides", []).append(
+        {
+            "source": "run_profile.json",
+            "quality_mode": run_profile.get("quality_mode", ""),
+            "scope": run_profile.get("scope", ""),
+            "output_format": run_profile.get("output_format", ""),
+            "updated_at": now_utc(),
+        }
+    )
     return profile
 
 
@@ -174,6 +209,10 @@ def main() -> int:
     resolve.add_argument("--json", action="store_true")
     resolve.add_argument("--from-config", action="store_true", help="Let project_config.json override missing/profile values.")
 
+    sync_run = subparsers.add_parser("sync-run-profile", help="Sync stage backend/base_url/model from run_profile.json.")
+    sync_run.add_argument("project_root")
+    sync_run.add_argument("--run-profile", default="", help="Defaults to <project_root>/run_profile.json.")
+
     args = parser.parse_args()
     root = Path(args.project_root)
 
@@ -192,6 +231,18 @@ def main() -> int:
 
     if args.command == "show":
         print(json.dumps(load_profile(root), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "sync-run-profile":
+        path = profile_path(root)
+        profile = load_profile(root)
+        run_path = Path(args.run_profile) if args.run_profile else run_profile_path(root)
+        run_profile = read_json(run_path)
+        if run_profile.get("confirmed") is not True:
+            raise SystemExit(f"Run profile is not confirmed: {run_path}")
+        profile = merge_run_profile(profile, run_profile)
+        write_json(path, profile)
+        print(path.as_posix())
         return 0
 
     if args.command == "set-stage":

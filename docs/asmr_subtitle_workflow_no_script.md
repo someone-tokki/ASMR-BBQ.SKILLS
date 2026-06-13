@@ -9,7 +9,7 @@
 - 无台本时，ASR 是字幕时间轴和原文的主要来源，但不能盲信。
 - 使用当前可用的较好 ASR 方案和更严格的人工校对；模型可替换。
 - 不能确认的句子要标为待复核或向用户说明，不要编剧情。
-- 促销/试听、EX/free talk、bonus、DLC、特典等附加音频也要单独跑、单独校对；除非用户明确要求只翻正片，否则默认全部纳入翻译范围。
+- 促销/试听、EX/free talk、bonus、DLC、特典等附加音频也要单独跑、单独校对；开跑前必须先列出音频文件夹并让用户确认本轮范围，不能默认歧视或跳过附加音频。
 - 中文质量目标与有台本项目相同：自然、有人情味、符合情境，不生硬直译。
 - 所有优化都不能破坏质量底线：保持 SRT 编号、顺序、开始时间、结束时间不变；翻译输出必须覆盖所有目标编号；context halo 只用于理解，不能写入输出；QC 建议只能作为候选，不能直接自动改字幕；ASMR 语义、角色关系、动作连续性优先于机械压缩 chunk；缓存命中不能复用到内容、模型、prompt/schema、参数或上下文不一致的 chunk。
 - 长时间 ASR/翻译任务应使用脚本侧进度条；正常推进时少打扰用户，只有报错、需要决策或阶段完成时再单独说明。
@@ -78,6 +78,49 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 ## 执行步骤
 
+0. Preflight 开烤确认
+
+   在任何 ASR、翻译或 QC 模型调用前，必须先完成 Preflight。先解析项目上下文并扫描音频文件夹：
+
+   ```bash
+   python scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json
+
+   python scripts/scan_audio_scope.py "$SOURCE_PROJECT_DIR" \
+     --json-out "$PROJECT_ROOT/audio_scope_report.json"
+   ```
+
+   向用户展示 `audio_scope_report.json` 中的文件夹清单，询问本轮要翻译哪些音频文件夹或具体文件。试听、DLC、EX、bonus、特典不能被默认排除；只有用户确认 `all` 时才全量处理。无 SE 目录只作为 ASR 来源优先候选，不等于自动只翻无 SE。
+
+   同时确认质量模式、ASR/翻译/QC 模型和输出格式。用户确认后写入本次运行记录：
+
+   ```bash
+   python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
+     --quality-mode standard \
+     --scope selected_dirs \
+     --selected-audio-dir "<folder-from-audio-scope-report>" \
+     --output-format vtt \
+     --asr-backend auto \
+     --asr-model large-v3 \
+     --translate-backend auto \
+     --translate-base-url "$TRANSLATE_BASE_URL" \
+     --translate-model "$TRANSLATE_MODEL" \
+     --qc-backend auto \
+     --qc-base-url "$QC_BASE_URL" \
+     --qc-model "$QC_MODEL" \
+     --confirmed \
+     --overwrite
+   ```
+
+   如果用户选择全部，用 `--scope all`；如果指定具体音频，用 `--scope selected_files --selected-audio-file "<file>"`。后续每个模型阶段前都要硬检查：
+
+   ```bash
+   python scripts/check_preflight.py "$PROJECT_ROOT" --stage asr
+   python scripts/check_preflight.py "$PROJECT_ROOT" --stage translate
+   python scripts/check_preflight.py "$PROJECT_ROOT" --stage qc
+   ```
+
+   质量模式映射：`draft -> turbo` 粗烤，`standard -> fast + two-pass QC`，`premium -> safe + two-pass QC`，`polish -> safe + two-pass QC`。
+
 1. 盘点音频和元信息
 
    先解析项目上下文。这个步骤必须在创建配置或写任何输出文件前完成；如果源目录或父目录名是 `RJxxxx`，脚本会把它识别为 `WORK_ID`：
@@ -90,7 +133,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    - 递归列出源作品文件夹下所有目标音频文件、标题、时长、目录结构。
    - 根据文件名判断剧情顺序、本篇、EX/free talk、bonus、DLC、特典、促销/试听，但分类只用于组织工作目录和命名，不用于默认排除。
-   - 不要只看主线编号、目录名或“看起来是试听/附赠”就跳过音频。若用户没有明确说只翻正片或只翻指定文件，所有发现的目标音频都要进入 ASR/翻译/QC/导出范围。
+   - 不要只看主线编号、目录名或“看起来是试听/附赠”就跳过音频。实际处理范围以 Preflight 中用户确认的文件夹或文件为准。
    - 若有 DLsite 商品页文本、标题、角色介绍、试听说明，可作为低强度上下文参考，但不要当完整台本。
    - 如果目录名或用户输入中识别到 RJ 号，且允许联网，可抓取 DLsite 商品页元信息：
 
@@ -109,7 +152,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --json-out "$PROJECT_ROOT/audio_source_report.json"
    ```
 
-   默认优先使用扫描报告推荐的无 SE 音频跑 ASR，因为背景声和效果音更少，日语耳语识别通常更准。但这只是默认偏好；如果用户明确指定使用有 SE、通常版或某个目录/文件，就按用户指定，并可用 `--user-selected "/path/to/user_choice"` 记录该覆盖选择。
+   默认按扫描报告的 `recommended_asr_files` 选择 ASR 输入：用户明确指定有 SE、通常版或某个目录/文件时，以用户指定为准，并可用 `--user-selected "/path/to/user_choice"` 记录该覆盖选择；否则只有在无 SE 文件能和普通音频按轨道名对齐且 `requires_review=false` 时，才默认使用这些无 SE 文件。无 SE 同一轨道同时有 MP3/WAV 时，优先选 MP3 以加快 ASR；若报告出现未匹配、疑似试听/裁剪/占位文件等 warning 或 `requires_review=true`，先人工核对时长和轨道对应关系。
 
 2. 读取语料库
 
@@ -233,14 +276,25 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    如果返回 `run_local_platform_asr_api` 或 `run_local_asr_api`，使用报告里的 `ASR_BASE_URL` 调用本地 `/audio/transcriptions`。如果用户明确选择外部 ASR 命令或 `mlx_whisper`，按对应路线执行；否则不要用临时 pip 命令、乱猜本地入口或把只支持 chat 的翻译/QC 服务当成 ASR。
 
-   无台本时优先使用当前机器上“识别日语耳语最好”的 ASR。若有无 SE 版本且用户没有指定别的版本，优先用无 SE 版本作为 ASR 输入；最终字幕仍输出到 `$FINAL_SUBTITLE_DIR`，不是 ASR 输入目录或音频子目录。如果音频很难、耳语很多、BGM 大，可考虑：
+   无台本时优先使用当前机器上“识别日语耳语最好”的 ASR。音源选择遵循：用户指定 > 可对齐的无 SE MP3 > 可对齐的无 SE WAV > 原音频。若无 SE 文件未能和普通音频对上，或 MP3 看起来像试听/裁剪/异常小文件，先核对再使用；最终字幕仍输出到 `$FINAL_SUBTITLE_DIR`，不是 ASR 输入目录或音频子目录。如果音频很难、耳语很多、BGM 大，可考虑：
 
    - 保留 `language=ja`
    - 关闭 `condition_on_previous_text`
    - 使用初始提示说明“成人向日语 ASMR，耳语、吐息、拟声多”
    - 对特别难的音频分段重跑或换更强模型
 
-   ASR 优化必须谨慎使用。优先无 SE 音源；如果所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
+   ASR 优化必须谨慎使用。优先用户指定音源；未指定时才优先可对齐的无 SE 音源，并在同轨道无 SE MP3/WAV 中优先 MP3。若所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
+
+   长音频或多次试跑前，可以先准备保守的 ASR 音频缓存和分段恢复计划。这个步骤不会擅自丢弃低声内容；默认只写 segments manifest，只有显式 `--normalize` 时才用 ffmpeg 生成 16k mono WAV：
+
+   ```bash
+   python scripts/prepare_asr_audio_cache.py "$ASR_INPUT_DIR" \
+     --cache-dir "$PROJECT_ROOT/asr_prepared" \
+     --recursive \
+     --segment-sec 900 \
+     --overlap-sec 8 \
+     --json-out "$PROJECT_ROOT/asr_prepared/asr_prepared_report.json"
+   ```
 
    双人/多人左右耳语补漏只按需执行。主 ASR 后可以先跑轻量候选扫描，只生成报告，不自动合并字幕：
 
