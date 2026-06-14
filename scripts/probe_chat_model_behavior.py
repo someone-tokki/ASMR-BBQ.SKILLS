@@ -88,12 +88,37 @@ def run_probe(url: str, *, api_key: str, model: str, style: str, no_thinking: bo
     }
 
 
+def classify_http_error(probe: dict[str, Any]) -> tuple[str, str]:
+    code = int(probe.get("http_code") or 0)
+    error = str(probe.get("error") or "").strip()
+    if code == 401:
+        return "auth_failed", "本地服务拒绝 API key；尚未进入模型加载或推理阶段。"
+    if code == 404:
+        return "model_not_found", "模型 id 不在本地服务的 /models 列表中；请使用后端暴露的精确模型名。"
+    if code >= 500:
+        return "model_load_failed", "本地服务返回 5xx；通常是模型加载、权重/架构兼容、显存/内存或后端热切换问题，不是输出 thinking 的问题。"
+    return "backend_http_error", f"本地服务返回 HTTP {code}；请求被后端拒绝。{error[:160]}"
+
+
 def classify(probes: list[dict[str, Any]], *, max_reasonable_sec: float) -> tuple[str, list[str]]:
     notes: list[str] = []
-    all_no_think = True
+    no_thinking_clean = True
     any_empty = False
     slow_count = 0
     json_ok = True
+    http_errors = [probe for probe in probes if probe.get("status") == "http_error"]
+    if http_errors:
+        first_verdict, first_note = classify_http_error(http_errors[0])
+        notes.append(first_note)
+        plain_ok = any(probe.get("status") == "ok" and not probe.get("no_thinking") for probe in probes)
+        no_thinking_failed = any(probe.get("status") == "http_error" and probe.get("no_thinking") for probe in probes)
+        plain_failed = any(probe.get("status") == "http_error" and not probe.get("no_thinking") for probe in probes)
+        if plain_ok and no_thinking_failed:
+            notes.append("普通请求可用，但 no-thinking 请求失败；该后端/模型可能不接受 chat_template_kwargs 或 thinking_budget。")
+            return "no_thinking_payload_rejected", notes
+        if plain_failed:
+            notes.append("普通请求也失败；问题发生在模型可用性/加载阶段，不能归因于 no-thinking 参数。")
+        return first_verdict, notes
     for probe in probes:
         elapsed = float(probe["elapsed_sec"])
         resp = probe["response"]
@@ -101,8 +126,8 @@ def classify(probes: list[dict[str, Any]], *, max_reasonable_sec: float) -> tupl
             slow_count += 1
         if resp.get("empty"):
             any_empty = True
-        if resp.get("has_think_markers"):
-            all_no_think = False
+        if probe.get("no_thinking") and resp.get("has_think_markers"):
+            no_thinking_clean = False
         if probe["style"] == "json":
             preview = str(probe.get("raw_preview", "")).strip()
             if not (preview.startswith("{") and preview.endswith("}")):
@@ -111,13 +136,13 @@ def classify(probes: list[dict[str, Any]], *, max_reasonable_sec: float) -> tupl
         notes.append("至少一个探测返回空响应，说明该模型/后端在当前参数下有空回包风险。")
     if slow_count >= 2:
         notes.append("多次探测都超过阈值，说明该模型可能不适合作为批量字幕翻译主模型。")
-    if all_no_think is False:
+    if no_thinking_clean is False:
         notes.append("探测中仍可见思考痕迹或思考标签，no-thinking 可能没有真正生效。")
     if not json_ok:
         notes.append("JSON 探测未稳定返回可解析对象，翻译/QC JSON 输出风险较高。")
     if any_empty or slow_count >= 2 or not json_ok:
         return "too_slow_reasoning_model", notes
-    if all_no_think is False:
+    if no_thinking_clean is False:
         return "no_thinking_not_effective", notes
     return "ok_for_translation", notes
 

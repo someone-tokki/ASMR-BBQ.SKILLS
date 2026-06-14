@@ -152,6 +152,27 @@ def build_chat_probe(model: str) -> dict[str, Any]:
     }
 
 
+def similar_model_ids(target_model: str, ids: list[str], *, limit: int = 5) -> list[str]:
+    target = target_model.lower()
+    compact = target.replace("-", "").replace("_", "")
+    scored: list[tuple[int, str]] = []
+    for model_id in ids:
+        mid = model_id.lower()
+        mid_compact = mid.replace("-", "").replace("_", "")
+        score = 0
+        if target and target in mid:
+            score += 100
+        if compact and compact in mid_compact:
+            score += 80
+        for token in target.replace("_", "-").split("-"):
+            if len(token) >= 3 and token in mid:
+                score += 10
+        if score:
+            scored.append((score, model_id))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [item[1] for item in scored[:limit]]
+
+
 def behavior_probe_command(
     *,
     base_url: str,
@@ -217,9 +238,28 @@ def behavior_probe_check(
     details = "\n".join(notes) if notes else completed.stdout.strip()[:1000]
     if verdict == "ok_for_translation":
         return Check("behavior_probe", "OK", "Model behavior probe passed for fast JSON-style subtitle work.", details), [], report
+    if verdict in {"auth_failed", "model_not_found", "model_load_failed", "backend_http_error"}:
+        actions = [
+            "Fix the local backend/model availability problem, then rerun the model-stage check before changing subtitle chunking or prompts.",
+        ]
+        if verdict == "model_not_found":
+            actions.append("Use the exact model id exposed by /models in model_profile.json or run_profile.json.")
+        if verdict == "model_load_failed":
+            actions.append("Check the backend logs for weight shape, architecture support, memory pressure, or model conversion errors.")
+            actions.append("If the same backend can run another model with no-thinking enabled, treat this as a model/backend compatibility failure rather than a Skill no-thinking policy failure.")
+        return Check("behavior_probe", "FAIL", f"Model behavior probe verdict: {verdict}.", details), actions, report
+    if verdict == "no_thinking_payload_rejected":
+        return (
+            Check("behavior_probe", "FAIL" if require_non_thinking else "WARN", "The model works without no-thinking controls but rejects the Skill no-thinking payload.", details),
+            [
+                "Use a model/backend that accepts no-thinking controls for structured subtitle work, or explicitly configure this model as reasoning and accept slower/manual review behavior.",
+                "If this backend has a different no-thinking parameter name, update the Skill scripts before production use.",
+            ],
+            report,
+        )
     actions = [
         "Use a non-reasoning instruct/translation model for bulk subtitle translation, or explicitly accept slower reasoning-model throughput.",
-        "If this is a Qwen3.x reasoning model under LM Studio, prefer Qwen2.5-32B-Instruct or another non-reasoning model for translation.",
+        "For oMLX/LM Studio/Ollama, prefer a verified non-reasoning instruct model such as Qwen2.5-Instruct for bulk translation unless the reasoning model passes this probe.",
     ]
     status = "FAIL" if require_non_thinking else "WARN"
     return Check("behavior_probe", status, f"Model behavior probe verdict: {verdict}.", details), actions, report
@@ -319,12 +359,16 @@ def main() -> int:
             elif str(target["model"]) in ids:
                 checks.append(Check("models_endpoint", "OK", f"Target model is listed by /models: {target['model']}"))
             else:
+                similar = similar_model_ids(str(target["model"]), ids)
+                detail = "Check the exact model id in the local backend or update model_profile.json/run_profile.json."
+                if similar:
+                    detail += " Similar exposed model id(s): " + ", ".join(similar)
                 checks.append(
                     Check(
                         "models_endpoint",
                         "FAIL",
                         f"Target model is not listed by /models: {target['model']}",
-                        "Check the exact model id in the local backend or update model_profile.json/run_profile.json.",
+                        detail,
                     )
                 )
                 next_actions.append("Confirm the exact model id exposed by the local backend and update the QC/translation model setting.")

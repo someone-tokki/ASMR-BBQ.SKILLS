@@ -131,7 +131,7 @@ python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage transl
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY" --probe-behavior --require-non-thinking --json-out "$PROJECT_ROOT/model_stage_translate.json"
 ```
 
-探测发现 hidden thinking、空响应、JSON 不稳定或短请求也明显超时，就停止并建议换非 reasoning instruct 模型，不要只靠调 chunk 硬跑。
+探测发现 hidden thinking、空响应、JSON 不稳定或短请求也明显超时，就停止并建议换非 reasoning instruct 模型，不要只靠调 chunk 硬跑。如果报告 `model_not_found`，先用 `/models` 里的精确 id 修正配置。如果报告 `model_load_failed`，或后端日志出现权重 shape / 架构不兼容，按模型/后端加载失败处理，不要误判为 no-thinking 限制导致所有 reasoning 模型不可用。如果普通请求可用、只有 no-thinking 请求失败，才归类为 `no_thinking_payload_rejected`。
 
 如果翻译模型和 QC 模型不同，QC 前的阶段检查是硬门禁。HTTP 500 常见原因是上一阶段模型尚未释放显存/内存、目标 QC 模型加载失败或过大、本地后端不支持自动热切换、模型名不匹配，或服务需要手动重载/重启。此时停止并让用户释放/切换/加载模型后重试，不要改用 agent 自身模型做 QC。
 
