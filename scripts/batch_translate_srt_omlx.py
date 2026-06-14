@@ -67,8 +67,6 @@ def build_command(args: argparse.Namespace, input_srt: Path, output_srt: Path, p
         args.script,
         str(input_srt),
         str(output_srt),
-        "--api-key",
-        args.api_key,
         "--preset",
         args.preset,
         "--chunk-size",
@@ -76,8 +74,13 @@ def build_command(args: argparse.Namespace, input_srt: Path, output_srt: Path, p
         "--progress-position",
         str(position),
     ]
+    if args.api_key:
+        command.extend(["--api-key", args.api_key])
     optional_pairs = [
         ("model", "--model"),
+        ("provider", "--provider"),
+        ("provider_profile", "--provider-profile"),
+        ("provider_registry", "--provider-registry"),
         ("base_url", "--base-url"),
         ("chunk_mode", "--chunk-mode"),
         ("min_chunk_size", "--min-chunk-size"),
@@ -135,8 +138,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", required=True)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--api-key", required=True)
+    parser.add_argument("--api-key", default="")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--provider", default=None, choices=[None, "openai-compatible", "anthropic"])
+    parser.add_argument("--provider-profile", default=None)
+    parser.add_argument("--provider-registry", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--preset", default="fast", choices=sorted(PRESET_DEFAULTS))
     parser.add_argument("--chunk-size", default=None)

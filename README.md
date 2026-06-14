@@ -58,6 +58,14 @@ ASMR_SUBTITLE_LEARNING_DIR=/path/to/learning
 ASMR_SUBTITLE_ASR_DIR=/path/to/asr
 ```
 
+云端或共享本地模型 API 的连接配置放在用户级 registry：
+
+```text
+${ASMR_BBQ_HOME:-~/ASMR-BBQ}/providers.json
+```
+
+它只记录 provider、base URL、默认模型、API key 环境变量名和可用阶段，不保存明文 key。项目里的 `model_profile.json` 只绑定翻译/QC 使用哪个 provider profile 和模型。
+
 ## 质量规则
 
 - 保持 SRT 编号、顺序、开始时间、结束时间稳定，除非明确要重定时。

@@ -5,11 +5,11 @@ import argparse
 import json
 import time
 import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from chat_client import chat_completion, resolve_provider_runtime
 
 THINKING_MARKERS = ("<think>", "</think>", "thinking", "reasoning")
 
@@ -21,22 +21,6 @@ def now_utc() -> str:
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def request_json(url: str, *, api_key: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        raw = response.read().decode("utf-8", errors="replace")
-    return json.loads(raw) if raw.strip() else {}
 
 
 def build_prompt(style: str) -> str:
@@ -72,10 +56,26 @@ def summarize_content(content: str) -> dict[str, Any]:
     }
 
 
-def run_probe(url: str, *, api_key: str, model: str, style: str, no_thinking: bool, timeout: float) -> dict[str, Any]:
+def run_probe(
+    *,
+    provider: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    style: str,
+    no_thinking: bool,
+    timeout: float,
+) -> dict[str, Any]:
     payload = build_payload(model, style=style, no_thinking=no_thinking)
     started = time.monotonic()
-    response = request_json(url, api_key=api_key, payload=payload, timeout=timeout)
+    response = chat_completion(
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        payload=payload,
+        timeout=timeout,
+    )
     elapsed = time.monotonic() - started
     content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
     summary = summarize_content(str(content))
@@ -151,19 +151,34 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Probe whether a local chat model behaves like a fast non-reasoning model.")
     parser.add_argument("base_url")
     parser.add_argument("model")
+    parser.add_argument("--provider", default="openai-compatible", choices=["openai-compatible", "anthropic"])
+    parser.add_argument("--provider-profile", default="")
+    parser.add_argument("--provider-registry", default="")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--max-reasonable-sec", type=float, default=12.0)
     parser.add_argument("--json-out", default="")
     parser.add_argument("--allow-fail", action="store_true")
     args = parser.parse_args()
+    runtime = resolve_provider_runtime(args, stage="translate")
+    provider = runtime["provider"]
+    base_url = runtime["base_url"] or args.base_url.rstrip("/")
+    model = runtime["model"] or args.model
+    api_key = runtime["api_key"]
 
-    url = args.base_url.rstrip("/") + "/chat/completions"
     probes: list[dict[str, Any]] = []
     for style, no_thinking in [("plain", False), ("plain", True), ("json", True)]:
         started = time.monotonic()
         try:
-            result = run_probe(url, api_key=args.api_key, model=args.model, style=style, no_thinking=no_thinking, timeout=args.timeout)
+            result = run_probe(
+                provider=provider,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                style=style,
+                no_thinking=no_thinking,
+                timeout=args.timeout,
+            )
             result["status"] = "ok"
         except urllib.error.HTTPError as exc:
             body = ""
@@ -197,8 +212,10 @@ def main() -> int:
     report = {
         "schema_version": 1,
         "created_at": now_utc(),
-        "base_url": args.base_url.rstrip("/"),
-        "model": args.model,
+        "provider": provider,
+        "provider_profile": args.provider_profile,
+        "base_url": base_url,
+        "model": model,
         "verdict": verdict,
         "notes": notes,
         "probes": probes,

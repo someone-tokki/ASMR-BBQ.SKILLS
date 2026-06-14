@@ -17,6 +17,7 @@ from tqdm import tqdm
 from subtitle_io import Subtitle, compose_srt_text, format_srt_timestamp, parse_srt_text
 from subtitle_chunking import Chunk, build_semantic_chunks, chunk_summary
 from preflight_gate import add_preflight_args, enforce_preflight
+from chat_client import chat_completion, error_body, resolve_provider_runtime
 
 
 SYSTEM_PROMPT = """你是专业的日译中 ASMR 字幕翻译器。
@@ -74,6 +75,8 @@ PRESETS = {
     },
 }
 
+DEFAULT_CHAT_MODEL = "Qwen2.5-32B-Instruct-GGUF-Q4_K_M"
+
 
 def simplify_source_text(text: str) -> str:
     compact = re.sub(r"\s+", "", text)
@@ -126,6 +129,37 @@ def post_json(url: str, api_key: str, payload: dict, timeout: int) -> dict:
         raise RuntimeError(f"Could not reach {url}: {exc}") from exc
 
 
+def call_chat(
+    *,
+    provider: str,
+    base_url: str,
+    url: str,
+    api_key: str,
+    model: str,
+    payload: dict[str, Any],
+    timeout: int,
+) -> dict[str, Any]:
+    if provider == "openai-compatible" and url:
+        return post_json(url, api_key, payload, timeout)
+    try:
+        return chat_completion(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            payload=payload,
+            timeout=timeout,
+        )
+    except urllib.error.HTTPError as exc:
+        detail = error_body(exc)
+        message = f"HTTP {exc.code} from {provider} provider while calling model '{model}'."
+        if detail:
+            message += f" Response body: {detail}"
+        raise RuntimeError(message) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not reach {provider} provider at {base_url}: {exc}") from exc
+
+
 def extract_json_array(text: str) -> list[dict]:
     text = text.strip()
     if text.startswith("```"):
@@ -157,6 +191,8 @@ def translate_chunk(
     context_after: list[dict],
     *,
     url: str,
+    provider: str,
+    base_url: str,
     api_key: str,
     model: str,
     timeout: int,
@@ -193,7 +229,15 @@ def translate_chunk(
         "max_tokens": max(1200, reasoning_token_budget, sum(len(item["text"]) for item in items) * 4 + 600),
         "chat_template_kwargs": {"enable_thinking": False},
     }
-    data = post_json(url, api_key, payload, timeout)
+    data = call_chat(
+        provider=provider,
+        base_url=base_url,
+        url=url,
+        api_key=api_key,
+        model=model,
+        payload=payload,
+        timeout=timeout,
+    )
     content = data["choices"][0]["message"].get("content", "")
     translated = extract_json_array(content)
     result: dict[int, str] = {}
@@ -341,9 +385,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("input_srt")
     parser.add_argument("output_srt")
-    parser.add_argument("--model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
-    parser.add_argument("--api-key", required=True)
+    parser.add_argument("--model", default="")
+    parser.add_argument("--base-url", default="")
+    parser.add_argument("--api-key", default="")
+    parser.add_argument("--provider", default="openai-compatible", choices=["openai-compatible", "anthropic"])
+    parser.add_argument("--provider-profile", default="", help="User-level provider registry profile.")
+    parser.add_argument("--provider-registry", default="", help="Override provider registry path.")
     parser.add_argument("--preset", choices=sorted(PRESETS), default="fast")
     parser.add_argument("--chunk-size", type=int, default=None)
     parser.add_argument("--chunk-mode", choices=["dynamic", "fixed"], default=None)
@@ -370,6 +417,14 @@ def main() -> int:
     args = parser.parse_args()
     enforce_preflight(args, "translate")
     apply_preset(args)
+    runtime = resolve_provider_runtime(args, stage="translate")
+    args.provider = runtime["provider"]
+    args.base_url = runtime["base_url"] or "http://127.0.0.1:8000/v1"
+    args.model = runtime["model"] or DEFAULT_CHAT_MODEL
+    args.api_key = runtime["api_key"]
+    if not args.api_key and not args.plan_only:
+        source = f" environment variable {runtime['api_key_env']}" if runtime.get("api_key_env") else " --api-key"
+        raise SystemExit(f"API key is missing for translation; set{source}.")
 
     input_path = Path(args.input_srt)
     output_path = Path(args.output_srt)
@@ -398,7 +453,7 @@ def main() -> int:
         else:
             translations = {int(key): str(value) for key, value in saved.items()}
         print(f"RESUMED {len(translations)} translations from {partial_path}", flush=True)
-    url = args.base_url.rstrip("/") + "/chat/completions"
+    url = args.base_url.rstrip("/") + "/chat/completions" if args.provider == "openai-compatible" else ""
     items = [subtitle_to_item(sub) for sub in subs]
     chunks = build_semantic_chunks(
         items,
@@ -429,6 +484,8 @@ def main() -> int:
             "context_before": args.context_before,
             "context_after": args.context_after,
             "model": args.model,
+            "provider": args.provider,
+            "provider_profile": args.provider_profile,
             "base_url": args.base_url.rstrip("/"),
         },
         "chunks": [],
@@ -494,11 +551,13 @@ def main() -> int:
                         context_before,
                         context_after,
                         url=url,
+                        provider=args.provider,
+                        base_url=args.base_url,
                         api_key=args.api_key,
-                model=args.model,
-                timeout=args.timeout,
-                reasoning_token_budget=args.reasoning_token_budget,
-            )
+                        model=args.model,
+                        timeout=args.timeout,
+                        reasoning_token_budget=args.reasoning_token_budget,
+                    )
                     translations.update(translated)
                     flags.update(chunk_flags)
                     break

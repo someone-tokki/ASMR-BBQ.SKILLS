@@ -81,12 +81,16 @@ def build_config(args: argparse.Namespace, existing: dict[str, Any] | None = Non
             "asr_base_url": args.asr_base_url,
             "asr_model": args.asr_model,
             "translate_backend": args.translate_backend,
+            "translate_provider": getattr(args, "translate_provider", ""),
+            "translate_provider_profile": getattr(args, "translate_provider_profile", ""),
             "translate_base_url": args.translate_base_url,
             "translate_model": args.translate_model,
             "translate_model_class": getattr(args, "translate_model_class", ""),
             "translate_behavior_probe_required": getattr(args, "translate_behavior_probe_required", None),
             "translate_require_non_thinking": getattr(args, "translate_require_non_thinking", None),
             "qc_backend": args.qc_backend,
+            "qc_provider": getattr(args, "qc_provider", ""),
+            "qc_provider_profile": getattr(args, "qc_provider_profile", ""),
             "qc_base_url": args.qc_base_url,
             "qc_model": args.qc_model,
             "qc_model_class": getattr(args, "qc_model_class", ""),
@@ -129,9 +133,15 @@ def print_config_summary(data: dict[str, Any]) -> None:
     print(f"asr_backend: {models.get('asr_backend', '')}")
     print(f"asr_base_url: {models.get('asr_base_url', '')}")
     print(f"translate_backend: {models.get('translate_backend', '')}")
+    if models.get("translate_provider") or models.get("translate_provider_profile"):
+        print(f"translate_provider: {models.get('translate_provider', '')}")
+        print(f"translate_provider_profile: {models.get('translate_provider_profile', '')}")
     print(f"translate_base_url: {models.get('translate_base_url', '')}")
     print(f"translate_model: {models.get('translate_model', '')}")
     print(f"qc_backend: {models.get('qc_backend', '')}")
+    if models.get("qc_provider") or models.get("qc_provider_profile"):
+        print(f"qc_provider: {models.get('qc_provider', '')}")
+        print(f"qc_provider_profile: {models.get('qc_provider_profile', '')}")
     print(f"qc_base_url: {models.get('qc_base_url', '')}")
     print(f"qc_model: {models.get('qc_model', '')}")
     print(f"qc_report: {data.get('artifacts', {}).get('qc_report', '')}")
@@ -154,12 +164,16 @@ def add_common_init_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--asr-base-url", default="", help="Local ASR API base URL, for example http://127.0.0.1:8000/v1.")
     parser.add_argument("--asr-model", default="")
     parser.add_argument("--translate-backend", default="auto", help="Backend record: auto, ollama, omlx, openai-compatible, or another project-specific value.")
+    parser.add_argument("--translate-provider", default="", help="Chat provider type, e.g. openai-compatible or anthropic.")
+    parser.add_argument("--translate-provider-profile", default="", help="User-level provider registry profile for translation.")
     parser.add_argument("--translate-base-url", default="")
     parser.add_argument("--translate-model", default="")
     parser.add_argument("--translate-model-class", default="")
     parser.add_argument("--translate-behavior-probe-required", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--translate-require-non-thinking", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--qc-backend", default="auto", help="QC backend record. Defaults to auto and may differ from translation.")
+    parser.add_argument("--qc-provider", default="", help="QC chat provider type, e.g. openai-compatible or anthropic.")
+    parser.add_argument("--qc-provider-profile", default="", help="User-level provider registry profile for QC.")
     parser.add_argument("--qc-base-url", default="", help="QC chat API base URL. Defaults to translate_base_url when omitted in workflow usage.")
     parser.add_argument("--qc-model", default="")
     parser.add_argument("--qc-model-class", default="")

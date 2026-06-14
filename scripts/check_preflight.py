@@ -67,7 +67,11 @@ def validate(profile: dict[str, Any], stage: str) -> list[str]:
                 errors,
             )
         if name in {"translate", "qc"} and current.get("backend") not in {"none", "off"}:
-            require(bool(current.get("base_url")), f"{name}.base_url is missing", errors)
+            require(
+                bool(current.get("base_url") or current.get("provider_profile")),
+                f"{name}.base_url or {name}.provider_profile is missing",
+                errors,
+            )
             require(
                 str(current.get("model", "")).lower() not in {"large-v3", "whisper", "whisper-large-v3"},
                 f"{name}.model looks like an ASR model, not a chat model",

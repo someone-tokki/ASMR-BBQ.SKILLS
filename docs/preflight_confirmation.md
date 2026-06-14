@@ -60,6 +60,7 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 
 4. 翻译模型
 建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
+如果用户选择云端或共享本地 API，确认 provider profile、provider 类型、base URL、模型名和 API key 环境变量名。API key 不写入项目文件或 registry；用户若直接给 key，只能用于本轮运行/探测，或请用户把它设置到对应环境变量。
 
 5. QC 模型
 建议：standard 可用较快模型，premium 用强模型。无论第几轮 QC，都必须调用配置的 QC 模型，不用 agent 自审替代。
@@ -110,6 +111,26 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
 python scripts/manage_model_profile.py sync-run-profile "$PROJECT_ROOT"
 ```
 
+若使用云端或共享 provider，先注册用户级 provider，再把项目 stage 绑定到该 profile：
+
+```bash
+python scripts/manage_provider_registry.py add \
+  --name openrouter \
+  --provider openai-compatible \
+  --base-url https://openrouter.ai/api/v1 \
+  --model "$TRANSLATE_MODEL" \
+  --api-key-env OPENROUTER_API_KEY \
+  --stage translate \
+  --stage qc
+
+python scripts/manage_model_profile.py set-stage "$PROJECT_ROOT" translate \
+  --provider openai-compatible \
+  --provider-profile openrouter \
+  --model "$TRANSLATE_MODEL"
+```
+
+`providers.json` 默认位于 `${ASMR_BBQ_HOME:-~/ASMR-BBQ}/providers.json`。它只保存连接元数据和 `api_key_env`，不保存明文 key。
+
 模型调用前必须检查：
 
 ```bash
@@ -123,6 +144,12 @@ python scripts/check_preflight.py "$PROJECT_ROOT" --stage qc
 ```bash
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY"
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage translate --from-config --api-key "$TRANSLATE_API_KEY"
+```
+
+使用 provider profile 时可省略 `--api-key`，脚本会从 profile 指定的环境变量读取：
+
+```bash
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --provider-profile openrouter
 ```
 
 如果翻译模型是 Qwen3.x、reasoning 类、未知模型或新接入模型，翻译前还要跑行为探测：

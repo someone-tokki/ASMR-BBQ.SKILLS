@@ -42,8 +42,21 @@ def split_values(values: list[str]) -> list[str]:
     return result
 
 
-def stage(backend: str, base_url: str, model: str, *, reuse_existing: bool | None = None, tier: str = "") -> dict[str, Any]:
+def stage(
+    backend: str,
+    base_url: str,
+    model: str,
+    *,
+    provider: str = "",
+    provider_profile: str = "",
+    reuse_existing: bool | None = None,
+    tier: str = "",
+) -> dict[str, Any]:
     data: dict[str, Any] = {"backend": backend, "base_url": base_url, "model": model}
+    if provider:
+        data["provider"] = provider
+    if provider_profile:
+        data["provider_profile"] = provider_profile
     if reuse_existing is not None:
         data["reuse_existing"] = reuse_existing
     if tier:
@@ -83,8 +96,9 @@ def missing_fields(profile: dict[str, Any]) -> list[str]:
             missing.append(f"{name}.backend")
         if not current.get("model"):
             missing.append(f"{name}.model")
-        if name in {"translate", "qc"} and current.get("backend") not in {"none", "off"} and not current.get("base_url"):
-            missing.append(f"{name}.base_url")
+        if name in {"translate", "qc"} and current.get("backend") not in {"none", "off"}:
+            if not current.get("base_url") and not current.get("provider_profile"):
+                missing.append(f"{name}.base_url_or_provider_profile")
     return missing
 
 
@@ -93,6 +107,8 @@ def build_profile(args: argparse.Namespace, existing: dict[str, Any] | None = No
     mode_defaults = MODE_DEFAULTS[args.quality_mode]
     qc_tier = args.qc_tier or mode_defaults["qc_tier"]
     chunk_preset = args.chunk_preset or mode_defaults["chunk_preset"]
+    translate_base_url = "" if args.translate_provider_profile and args.translate_base_url == "http://127.0.0.1:8000/v1" else args.translate_base_url
+    qc_base_url = "" if args.qc_provider_profile and args.qc_base_url == "http://127.0.0.1:8000/v1" else args.qc_base_url
     profile: dict[str, Any] = {
         "version": 1,
         "created_at": created_at,
@@ -128,8 +144,21 @@ def build_profile(args: argparse.Namespace, existing: dict[str, Any] | None = No
                 args.asr_model,
                 reuse_existing=args.reuse_existing_asr,
             ),
-            "translate": stage(args.translate_backend, args.translate_base_url, args.translate_model),
-            "qc": stage(args.qc_backend, args.qc_base_url, args.qc_model, tier=qc_tier),
+            "translate": stage(
+                args.translate_backend,
+                translate_base_url,
+                args.translate_model,
+                provider=args.translate_provider,
+                provider_profile=args.translate_provider_profile,
+            ),
+            "qc": stage(
+                args.qc_backend,
+                qc_base_url,
+                args.qc_model,
+                provider=args.qc_provider,
+                provider_profile=args.qc_provider_profile,
+                tier=qc_tier,
+            ),
         },
         "notes": split_values(args.note),
     }
@@ -155,9 +184,13 @@ def main() -> int:
     parser.add_argument("--asr-model", default="large-v3")
     parser.add_argument("--reuse-existing-asr", action="store_true")
     parser.add_argument("--translate-backend", default="auto")
+    parser.add_argument("--translate-provider", default="")
+    parser.add_argument("--translate-provider-profile", default="")
     parser.add_argument("--translate-base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--translate-model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
     parser.add_argument("--qc-backend", default="auto")
+    parser.add_argument("--qc-provider", default="")
+    parser.add_argument("--qc-provider-profile", default="")
     parser.add_argument("--qc-base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--qc-model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
     parser.add_argument("--confirmed", action="store_true")

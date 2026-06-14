@@ -31,6 +31,8 @@ DEFAULT_PROFILE = {
         },
         "translate": {
             "backend": "auto",
+            "provider": "openai-compatible",
+            "provider_profile": "",
             "base_url": "http://127.0.0.1:8000/v1",
             "model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
             "interface": "/chat/completions",
@@ -41,6 +43,8 @@ DEFAULT_PROFILE = {
         },
         "qc": {
             "backend": "auto",
+            "provider": "openai-compatible",
+            "provider_profile": "",
             "base_url": "http://127.0.0.1:8000/v1",
             "model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
             "interface": "/chat/completions",
@@ -107,6 +111,10 @@ def merge_project_config(profile: dict[str, Any], config: dict[str, Any]) -> dic
         stages.setdefault("asr", {})["model"] = models.get("asr_model")
     if models.get("translate_backend"):
         stages.setdefault("translate", {})["backend"] = models.get("translate_backend")
+    if models.get("translate_provider"):
+        stages.setdefault("translate", {})["provider"] = models.get("translate_provider")
+    if models.get("translate_provider_profile"):
+        stages.setdefault("translate", {})["provider_profile"] = models.get("translate_provider_profile")
     if models.get("translate_base_url"):
         stages.setdefault("translate", {})["base_url"] = models.get("translate_base_url")
         stages.setdefault("qc", {})["base_url"] = models.get("translate_base_url")
@@ -122,6 +130,10 @@ def merge_project_config(profile: dict[str, Any], config: dict[str, Any]) -> dic
         stages.setdefault("qc", {})["base_url"] = models.get("qc_base_url")
     if models.get("qc_backend"):
         stages.setdefault("qc", {})["backend"] = models.get("qc_backend")
+    if models.get("qc_provider"):
+        stages.setdefault("qc", {})["provider"] = models.get("qc_provider")
+    if models.get("qc_provider_profile"):
+        stages.setdefault("qc", {})["provider_profile"] = models.get("qc_provider_profile")
     if models.get("qc_model"):
         stages.setdefault("qc", {})["model"] = models.get("qc_model")
     if models.get("qc_model_class"):
@@ -141,7 +153,7 @@ def merge_run_profile(profile: dict[str, Any], run_profile: dict[str, Any]) -> d
         if not source:
             continue
         stage_data = target.setdefault(stage_name, {})
-        for key in ("backend", "base_url", "model"):
+        for key in ("backend", "provider", "provider_profile", "base_url", "model"):
             value = source.get(key)
             if value:
                 stage_data[key] = value
@@ -171,6 +183,8 @@ def resolve_stage(profile: dict[str, Any], stage: str) -> dict[str, Any]:
     result = {
         "stage": stage,
         "backend": str(data.get("backend") or "auto"),
+        "provider": str(data.get("provider") or ("openai-compatible" if stage != "asr" else "")),
+        "provider_profile": str(data.get("provider_profile") or ""),
         "base_url": str(data.get("base_url") or ""),
         "model": str(data.get("model") or ""),
         "interface": str(data.get("interface") or ""),
@@ -180,6 +194,8 @@ def resolve_stage(profile: dict[str, Any], stage: str) -> dict[str, Any]:
         "require_non_thinking": bool(data.get("require_non_thinking", False)),
     }
     if stage == "asr":
+        result["provider"] = ""
+        result["provider_profile"] = ""
         result["model"] = result["model"] or str(defaults.get("asr_model") or "large-v3")
         result["base_url"] = result["base_url"] or str(defaults.get("asr_base_url") or "")
         result["interface"] = result["interface"] or "/audio/transcriptions"
@@ -197,6 +213,10 @@ def resolve_stage(profile: dict[str, Any], stage: str) -> dict[str, Any]:
 def print_shell(stage: dict[str, Any]) -> None:
     prefix = stage["stage"].upper()
     print(f"{prefix}_BACKEND={stage['backend']}")
+    if stage.get("provider"):
+        print(f"{prefix}_PROVIDER={stage['provider']}")
+    if stage.get("provider_profile"):
+        print(f"{prefix}_PROVIDER_PROFILE={stage['provider_profile']}")
     if stage.get("base_url"):
         print(f"{prefix}_BASE_URL={stage['base_url']}")
     print(f"{prefix}_MODEL={stage['model']}")
@@ -219,6 +239,8 @@ def main() -> int:
     set_stage.add_argument("project_root")
     set_stage.add_argument("stage", choices=STAGES)
     set_stage.add_argument("--backend")
+    set_stage.add_argument("--provider")
+    set_stage.add_argument("--provider-profile")
     set_stage.add_argument("--base-url")
     set_stage.add_argument("--model")
     set_stage.add_argument("--interface")
@@ -275,6 +297,8 @@ def main() -> int:
         stage_data = profile.setdefault("stages", {}).setdefault(args.stage, {})
         for arg_name, key in [
             ("backend", "backend"),
+            ("provider", "provider"),
+            ("provider_profile", "provider_profile"),
             ("base_url", "base_url"),
             ("model", "model"),
             ("interface", "interface"),

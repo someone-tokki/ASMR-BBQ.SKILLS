@@ -6,13 +6,13 @@ import json
 import subprocess
 import sys
 import urllib.error
-import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from manage_model_profile import config_path, load_profile, merge_project_config, merge_run_profile, resolve_stage, run_profile_path
+from chat_client import build_chat_probe, chat_completion, error_body, list_models, resolve_provider_runtime
 
 
 CHAT_STAGES = {"translate", "qc"}
@@ -48,37 +48,8 @@ def endpoint(base_url: str, suffix: str) -> str:
     return base_url.rstrip("/") + "/" + suffix.lstrip("/")
 
 
-def request_json(
-    url: str,
-    *,
-    method: str = "GET",
-    payload: dict[str, Any] | None = None,
-    api_key: str = "",
-    timeout: float = 20.0,
-) -> dict[str, Any]:
-    data = None
-    headers = {"Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        raw = response.read().decode("utf-8", errors="replace")
-    if not raw.strip():
-        return {}
-    return json.loads(raw)
-
-
 def http_error_detail(exc: urllib.error.HTTPError) -> str:
-    try:
-        body = exc.read().decode("utf-8", errors="replace").strip()
-    except Exception:
-        body = ""
-    if len(body) > 1000:
-        body = body[:1000] + "...[truncated]"
-    return body
+    return error_body(exc)
 
 
 def load_effective_profile(project_root: Path, from_config: bool, from_run_profile: bool) -> dict[str, Any]:
@@ -92,30 +63,6 @@ def load_effective_profile(project_root: Path, from_config: bool, from_run_profi
         if run_profile.get("confirmed") is True:
             profile = merge_run_profile(profile, run_profile)
     return profile
-
-
-def model_ids(data: dict[str, Any]) -> list[str]:
-    values = data.get("data")
-    if isinstance(values, list):
-        ids: list[str] = []
-        for item in values:
-            if isinstance(item, dict) and item.get("id"):
-                ids.append(str(item["id"]))
-            elif isinstance(item, str):
-                ids.append(item)
-        return ids
-    models = data.get("models")
-    if isinstance(models, list):
-        ids = []
-        for item in models:
-            if isinstance(item, dict) and item.get("name"):
-                ids.append(str(item["name"]))
-            elif isinstance(item, dict) and item.get("id"):
-                ids.append(str(item["id"]))
-            elif isinstance(item, str):
-                ids.append(item)
-        return ids
-    return []
 
 
 def stage_switch_check(target: dict[str, Any], previous: dict[str, Any] | None) -> Check:
@@ -137,20 +84,6 @@ def stage_switch_check(target: dict[str, Any], previous: dict[str, Any] | None) 
             "model still occupies memory, the target model cannot fit, or the backend cannot hot-switch models."
         ),
     )
-
-
-def build_chat_probe(model: str) -> dict[str, Any]:
-    return {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "Reply with OK only."},
-            {"role": "user", "content": "ping"},
-        ],
-        "temperature": 0,
-        "max_tokens": 8,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
-
 
 def similar_model_ids(target_model: str, ids: list[str], *, limit: int = 5) -> list[str]:
     target = target_model.lower()
@@ -187,6 +120,8 @@ def behavior_probe_command(
         str(Path(__file__).with_name("probe_chat_model_behavior.py")),
         base_url,
         model,
+        "--provider",
+        str(target.get("provider") or "openai-compatible"),
         "--timeout",
         str(timeout),
         "--max-reasonable-sec",
@@ -195,6 +130,8 @@ def behavior_probe_command(
     ]
     if api_key:
         command.extend(["--api-key", api_key])
+    if target.get("provider_profile"):
+        command.extend(["--provider-profile", str(target["provider_profile"])])
     if json_out:
         command.extend(["--json-out", json_out])
     return command
@@ -295,6 +232,9 @@ def main() -> int:
     parser.add_argument("--from-run-profile", action="store_true", default=True, help="Let confirmed run_profile.json override stage values when present.")
     parser.add_argument("--ignore-run-profile", action="store_false", dest="from_run_profile", help="Do not read run_profile.json.")
     parser.add_argument("--api-key", default="", help="Optional API key for OpenAI-compatible local services.")
+    parser.add_argument("--provider", default="", choices=["", "openai-compatible", "anthropic"], help="Override resolved chat provider.")
+    parser.add_argument("--provider-profile", default="", help="Override resolved user-level provider registry profile.")
+    parser.add_argument("--provider-registry", default="", help="Override provider registry path.")
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--skip-api", action="store_true", help="Only resolve config; do not call /models or /chat/completions.")
     parser.add_argument("--probe-chat", action="store_true", help="Compatibility no-op; chat probe runs by default unless --skip-chat-probe is set.")
@@ -310,6 +250,24 @@ def main() -> int:
     root = Path(args.project_root)
     profile = load_effective_profile(root, args.from_config, args.from_run_profile)
     target = resolve_stage(profile, args.stage)
+    if args.provider:
+        target["provider"] = args.provider
+    if args.provider_profile:
+        target["provider_profile"] = args.provider_profile
+    runtime_args = argparse.Namespace(
+        provider=target.get("provider") or "openai-compatible",
+        provider_profile=target.get("provider_profile") or "",
+        provider_registry=args.provider_registry,
+        base_url=target.get("base_url") or "",
+        model=target.get("model") or "",
+        api_key=args.api_key,
+    )
+    runtime = resolve_provider_runtime(runtime_args, stage=args.stage)
+    target["provider"] = runtime["provider"]
+    target["provider_profile"] = runtime["provider_profile"]
+    target["base_url"] = runtime["base_url"] or target.get("base_url", "")
+    target["model"] = runtime["model"] or target.get("model", "")
+    args.api_key = runtime["api_key"]
     previous_stage = args.previous_stage or ("translate" if args.stage == "qc" else "")
     previous = resolve_stage(profile, previous_stage) if previous_stage else None
     checks: list[Check] = []
@@ -343,19 +301,22 @@ def main() -> int:
     if args.skip_api:
         checks.append(Check("api_probe", "WARN", "Skipped live API checks by request."))
     elif can_probe:
-        models_url = endpoint(str(target["base_url"]), "/models")
         try:
-            data = request_json(models_url, api_key=args.api_key, timeout=args.timeout)
-            ids = model_ids(data)
+            if target.get("provider") == "anthropic":
+                checks.append(Check("models_endpoint", "WARN", "Skipped /models; Anthropic native API does not use OpenAI-compatible /models."))
+                ids = []
+            else:
+                ids = list_models(base_url=str(target["base_url"]), api_key=args.api_key, timeout=args.timeout)
             if not ids:
-                checks.append(
-                    Check(
-                        "models_endpoint",
-                        "WARN",
-                        "/models responded but no model ids were parsed.",
-                        "Some local services do not expose a useful model list; the chat probe will be the binding check.",
+                if target.get("provider") != "anthropic":
+                    checks.append(
+                        Check(
+                            "models_endpoint",
+                            "WARN",
+                            "/models responded but no model ids were parsed.",
+                            "Some services do not expose a useful model list; the chat probe will be the binding check.",
+                        )
                     )
-                )
             elif str(target["model"]) in ids:
                 checks.append(Check("models_endpoint", "OK", f"Target model is listed by /models: {target['model']}"))
             else:
@@ -387,16 +348,16 @@ def main() -> int:
             next_actions.append("Start or repair the configured local OpenAI-compatible service, then rerun this stage check.")
 
         if not args.skip_chat_probe:
-            chat_url = endpoint(str(target["base_url"]), "/chat/completions")
             try:
-                request_json(
-                    chat_url,
-                    method="POST",
-                    payload=build_chat_probe(str(target["model"])),
+                chat_completion(
+                    provider=str(target.get("provider") or "openai-compatible"),
+                    base_url=str(target["base_url"]),
                     api_key=args.api_key,
+                    model=str(target["model"]),
+                    payload=build_chat_probe(str(target["model"])),
                     timeout=args.timeout,
                 )
-                checks.append(Check("chat_probe", "OK", "Tiny /chat/completions probe succeeded."))
+                checks.append(Check("chat_probe", "OK", "Tiny chat probe succeeded."))
             except urllib.error.HTTPError as exc:
                 detail = http_error_detail(exc)
                 status = "FAIL"

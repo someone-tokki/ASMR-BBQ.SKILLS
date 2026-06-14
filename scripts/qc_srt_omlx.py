@@ -12,6 +12,7 @@ from typing import Any
 from tqdm import tqdm
 
 from preflight_gate import add_preflight_args, enforce_preflight
+from chat_client import resolve_provider_runtime
 from subtitle_io import format_srt_timestamp, parse_srt_text
 from subtitle_chunking import (
     Chunk,
@@ -21,7 +22,7 @@ from subtitle_chunking import (
     item_chars,
     item_risk_score,
 )
-from translate_srt_omlx import extract_json_array, post_json
+from translate_srt_omlx import call_chat, extract_json_array
 
 
 SYSTEM_PROMPT = """你是日译中 ASMR 字幕质检员。
@@ -41,6 +42,7 @@ DEEP_FLAGS = {
     "possible_noise",
     "needs_context",
 }
+DEFAULT_CHAT_MODEL = "Qwen2.5-32B-Instruct-GGUF-Q4_K_M"
 
 
 def load_pairs(ja_path: Path, zh_path: Path) -> list[dict]:
@@ -70,6 +72,8 @@ def qc_chunk(
     context_after: list[dict],
     *,
     url: str,
+    provider: str,
+    base_url: str,
     api_key: str,
     model: str,
     timeout: int,
@@ -117,7 +121,15 @@ def qc_chunk(
         "max_tokens": max(1200, reasoning_token_budget, sum(len(x["ja"]) + len(x["zh"]) for x in items) * 2 + 800),
         "chat_template_kwargs": {"enable_thinking": False},
     }
-    data = post_json(url, api_key, payload, timeout)
+    data = call_chat(
+        provider=provider,
+        base_url=base_url,
+        url=url,
+        api_key=api_key,
+        model=model,
+        payload=payload,
+        timeout=timeout,
+    )
     content = data["choices"][0]["message"].get("content", "")
     result = extract_json_array(content)
     clean: list[dict] = []
@@ -366,9 +378,12 @@ def main() -> int:
     parser.add_argument("--asr-dir", required=True)
     parser.add_argument("--zh-dir", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--api-key", required=True)
-    parser.add_argument("--model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
+    parser.add_argument("--api-key", default="")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--base-url", default="")
+    parser.add_argument("--provider", default="openai-compatible", choices=["openai-compatible", "anthropic"])
+    parser.add_argument("--provider-profile", default="", help="User-level provider registry profile.")
+    parser.add_argument("--provider-registry", default="", help="Override provider registry path.")
     parser.add_argument("--chunk-size", type=int, default=18, help="Fixed chunk size, or target chunk size when --chunk-mode dynamic.")
     parser.add_argument("--chunk-mode", choices=["dynamic", "fixed"], default="dynamic")
     parser.add_argument("--qc-tier", choices=["standard", "light", "deep", "two-pass"], default="two-pass")
@@ -394,6 +409,14 @@ def main() -> int:
     parser.set_defaults(resume=True)
     args = parser.parse_args()
     enforce_preflight(args, "qc")
+    runtime = resolve_provider_runtime(args, stage="qc")
+    args.provider = runtime["provider"]
+    args.base_url = runtime["base_url"] or "http://127.0.0.1:8000/v1"
+    args.model = runtime["model"] or DEFAULT_CHAT_MODEL
+    args.api_key = runtime["api_key"]
+    if not args.api_key and not args.plan_only:
+        source = f" environment variable {runtime['api_key_env']}" if runtime.get("api_key_env") else " --api-key"
+        raise SystemExit(f"API key is missing for QC; set{source}.")
 
     asr_dir = Path(args.asr_dir)
     zh_dir = Path(args.zh_dir)
@@ -407,7 +430,7 @@ def main() -> int:
             previous_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:
             previous_manifest = {}
-    url = args.base_url.rstrip("/") + "/chat/completions"
+    url = args.base_url.rstrip("/") + "/chat/completions" if args.provider == "openai-compatible" else ""
     context = read_context(args.context, args.context_file)
     signature_settings = {
         "chunk_mode": args.chunk_mode,
@@ -439,6 +462,8 @@ def main() -> int:
             "deep_neighbor_window": args.deep_neighbor_window,
             "reuse_chunk_boundaries": args.reuse_chunk_boundaries,
             "model": args.model,
+            "provider": args.provider,
+            "provider_profile": args.provider_profile,
             "base_url": args.base_url.rstrip("/"),
             "resume": args.resume,
             "force": args.force,
@@ -527,6 +552,8 @@ def main() -> int:
                                     chunk.context_before,
                                     chunk.context_after,
                                     url=url,
+                                    provider=args.provider,
+                                    base_url=args.base_url,
                                     api_key=args.api_key,
                                     model=args.model,
                                     timeout=args.timeout,
