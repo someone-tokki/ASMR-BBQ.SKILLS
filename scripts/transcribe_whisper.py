@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from preflight_gate import add_preflight_args, enforce_preflight
+from shared_asr_env import running_in_shared_whisper_python, shared_whisper_available, shared_whisper_python
 from asr_resume import (
     load_manifest,
     output_paths,
@@ -52,9 +56,16 @@ def main() -> int:
     try:
         import whisper
     except ImportError as exc:
+        if shared_whisper_available() and not running_in_shared_whisper_python():
+            command = [str(shared_whisper_python()), str(Path(__file__).resolve()), *sys.argv[1:]]
+            env = os.environ.copy()
+            env.setdefault("ASMR_SHARED_WHISPER_DELEGATED", "1")
+            result = subprocess.run(command, env=env, check=False)
+            return result.returncode
         raise SystemExit(
-            "Python package `whisper` is not available. Run scripts/setup_whisper_backend.py after user approval "
-            "to install openai-whisper and download the selected model."
+            "Python package `whisper` is not available in the current interpreter or shared ASR venv. "
+            "Run scripts/setup_whisper_backend.py after user approval; it installs openai-whisper into "
+            f"the shared venv at {shared_whisper_python().as_posix()} by default."
         ) from exc
 
     input_path = Path(args.input)

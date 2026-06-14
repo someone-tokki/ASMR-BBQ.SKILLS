@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from shared_asr_env import shared_whisper_available, shared_whisper_python
+
 
 STATUSES = ("OK", "WARN", "FAIL")
 OUTPUT_FORMATS = {"vtt", "srt", "both"}
@@ -27,6 +29,7 @@ REQUIRED_SCRIPTS = [
     "transcribe_mlx.py",
     "batch_transcribe_mlx.py",
     "asr_resume.py",
+    "shared_asr_env.py",
     "transcribe_whisper.py",
     "setup_whisper_backend.py",
     "transcribe_openai_audio.py",
@@ -139,6 +142,18 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def whisper_available_anywhere() -> bool:
+    return module_available("whisper") or shared_whisper_available()
+
+
+def whisper_message() -> str:
+    if module_available("whisper"):
+        return "Import is available in active interpreter"
+    if shared_whisper_available():
+        return f"Import is available in shared ASR venv: {shared_whisper_python().as_posix()}"
+    return "Import is not available in active interpreter or shared ASR venv"
 
 
 def missing_installable_python_packages() -> list[dict[str, str]]:
@@ -456,7 +471,7 @@ def check_asr_recommendation(config: dict[str, Any] | None, *, require_asr: bool
         if detected_auto_backend:
             recommended_status = "OK"
             recommended_message = f"{detected_auto_backend} at {detected_auto_base_url}"
-        elif module_available("whisper"):
+        elif whisper_available_anywhere():
             recommended_status = "OK"
             recommended_message = "python-whisper fallback"
         else:
@@ -465,13 +480,13 @@ def check_asr_recommendation(config: dict[str, Any] | None, *, require_asr: bool
         probe_summary = "; ".join(f"{item['base_url']}={'ok' if item['ok'] else 'not-ok'}" for item in auto_probes) or "no API candidates"
         recommended_detail = (
             f"Probe summary: {probe_summary}. "
-            f"whisper={'yes' if module_available('whisper') else 'no'}, mlx_whisper={'yes' if mlx_found else 'no'}. "
+            f"whisper={'yes' if whisper_available_anywhere() else 'no'}, shared_whisper_python={shared_whisper_python().as_posix()}, mlx_whisper={'yes' if mlx_found else 'no'}. "
             "ASR auto never treats a chat-only endpoint as transcription-capable unless /audio/transcriptions is detected."
         )
     elif effective in {"python-whisper", "whisper", "openai-whisper"}:
-        recommended_status = "OK" if module_available("whisper") else ("FAIL" if require_asr or (config and not asr_files) else "WARN")
+        recommended_status = "OK" if whisper_available_anywhere() else ("FAIL" if require_asr or (config and not asr_files) else "WARN")
         recommended_message = effective
-        recommended_detail = "Explicit Python Whisper route. Use setup_whisper_backend.py after user approval if import is missing."
+        recommended_detail = "Explicit Python Whisper route. setup_whisper_backend.py installs into the shared user ASR venv by default if import is missing."
     elif effective in {"local-asr-api", "openai-audio", "local-service"}:
         explicit_base_url = explicit_asr_candidates(config)[0] if explicit_asr_candidates(config) else ""
         if not explicit_base_url:
@@ -536,14 +551,14 @@ def check_imports(config: dict[str, Any] | None, *, require_asr: bool) -> list[C
     whisper_needed = (
         effective in {"python-whisper", "whisper", "openai-whisper"} or auto_will_need_python
     ) and (require_asr or (bool(config) and not asr_files))
-    whisper_status = "OK" if module_available("whisper") else ("FAIL" if whisper_needed else "WARN")
+    whisper_status = "OK" if whisper_available_anywhere() else ("FAIL" if whisper_needed else "WARN")
     checks.append(
         Check(
             "imports",
             "whisper",
             whisper_status,
-            "Import is available" if module_available("whisper") else "Import is not available",
-            "Required only when local platform/local ASR API is unavailable and the workflow falls back to Python Whisper. Use setup_whisper_backend.py after user approval.",
+            whisper_message(),
+            "Required only when local platform/local ASR API is unavailable and the workflow falls back to Python Whisper. setup_whisper_backend.py uses the shared user ASR venv by default, so same-machine agents should not reinstall into separate interpreters.",
         )
     )
     explicit_mlx = configured_asr_backend(config) == "mlx_whisper" or str((config or {}).get("platform", {}).get("profile", "")).strip().lower() == "macos-mlx"

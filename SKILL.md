@@ -113,9 +113,11 @@ python scripts/setup_whisper_backend.py \
   --json-out "$PROJECT_ROOT/whisper_setup_report.json"
 ```
 
+`setup_whisper_backend.py` uses a shared user ASR environment by default: `${ASMR_SUBTITLE_ASR_DIR:-~/ASMR-Subtitle-Translator/asr}/openai-whisper-venv`. Do not install openai-whisper into each agent's active Python interpreter unless the user explicitly passes `--no-shared`. Different Codex/Claude/agent installations on the same machine should reuse this shared venv and shared Whisper model cache.
+
 If the route decision is `run_local_platform_asr_api` or `run_local_asr_api`, run `scripts/transcribe_openai_audio.py` against the reported `ASR_BASE_URL`. If the route decision is `run_python_whisper`, run `scripts/transcribe_whisper.py`.
 
-ASR dependency rule: `--install-missing-python` is only for lightweight workflow packages such as `tqdm` and `PyYAML`. Use `setup_whisper_backend.py` for Python Whisper package/model setup. Do not use ad hoc pip/model-download commands for ASR backends outside the packaged setup route.
+ASR dependency rule: `--install-missing-python` is only for lightweight workflow packages such as `tqdm` and `PyYAML`. Use `setup_whisper_backend.py` for Python Whisper package/model setup. The default target is the shared user ASR venv, not the current agent interpreter. Do not use ad hoc pip/model-download commands for ASR backends outside the packaged setup route.
 
 ASR resume rule: ASR scripts resume by default at the audio-file level. They skip an audio file when a parseable `<track>.ja.asr.srt` already exists, rebuild SRT from `<track>.ja.asr.json` when possible, and write/update `$ASR_DIR/asr_manifest.json` after each skip, success, or error. Use `--force` only when the user wants to regenerate an already completed ASR file; use `--no-resume` only when debugging checkpoint behavior.
 
@@ -262,7 +264,7 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 - By default `check_environment.py` is read-only. With `--install-missing-python`, it may install small Python packages listed in its dependency table, such as `tqdm` and `PyYAML`, into the active interpreter.
 - It must not silently install Ollama/oMLX, ASR backends, system packages, models, or start services; report those as user/agent setup actions.
 - Translation and QC should use the selected local OpenAI-compatible chat service such as oMLX/Ollama/LM Studio.
-- If local platform/local ASR API is unavailable and local Python `whisper` is unavailable, use `scripts/setup_whisper_backend.py` to install `openai-whisper` and download/cache the selected model after user approval.
+- If local platform/local ASR API is unavailable and Python Whisper is unavailable in both the current interpreter and the shared user ASR venv, use `scripts/setup_whisper_backend.py` to install `openai-whisper` and download/cache the selected model after user approval.
 - Local service ASR via `/audio/transcriptions` may be auto-selected only after `scripts/resolve_asr_route.py` verifies the endpoint. A chat-only endpoint must not be treated as ASR-capable.
 - `asr_backend=auto` is not permission to install random ASR packages or guess local binaries; it is permission to probe known local platform ASR endpoints, then use the packaged Python Whisper route and its setup script if needed.
 

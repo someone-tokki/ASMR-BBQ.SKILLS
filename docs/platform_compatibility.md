@@ -5,6 +5,7 @@ This project should keep subtitle checks, config records, and reports portable a
 ## Backend Defaults
 
 - ASR backend defaults to `auto`, which means "probe local platform API `/audio/transcriptions` first, then configured `local-asr-api`, then packaged Python Whisper, then controlled setup"; it does not mean "install or try MLX". If Python `whisper` is missing and no local ASR API is reachable, use `setup_whisper_backend.py` as the controlled package/model setup route. Use `mlx_whisper` only when the user/project explicitly selects that route, such as `--asr-backend mlx_whisper` or `platform_profile=macos-mlx`.
+- `setup_whisper_backend.py` installs openai-whisper into the shared user ASR venv by default: `${ASMR_SUBTITLE_ASR_DIR:-~/ASMR-Subtitle-Translator/asr}/openai-whisper-venv`. Same-machine agents should reuse that venv instead of repeatedly installing Whisper into each active Python interpreter. Use `--no-shared` only when the user explicitly wants interpreter-local setup.
 - If a project already has usable `*.ja.asr.srt` files, missing local ASR packages should not block translation, QC, validation, or final export.
 - Use `check_environment.py --require-asr` when the current run must create new ASR files.
 - Before new ASR, run `resolve_asr_route.py`. In auto mode it resolves to `local-platform-asr-api` when a local platform endpoint supports `/audio/transcriptions`, to `local-asr-api` when a configured ASR endpoint is reachable, to `python-whisper` when the Python package is available, or to `setup_python_whisper_required` when setup is needed.
@@ -79,7 +80,7 @@ python scripts/check_environment.py --install-missing-python --skip-api
 
 It still must not silently install Ollama, oMLX, ASR backends, system packages, or models, and it must not start services. Report those as user/agent setup actions.
 
-`check_environment.py --install-missing-python` is only for lightweight workflow packages in the dependency table. Use `setup_whisper_backend.py` for openai-whisper package/model setup. It must not be used to install ASR engines such as `mlx_whisper` or to download arbitrary ASR models.
+`check_environment.py --install-missing-python` is only for lightweight workflow packages in the dependency table. Use `setup_whisper_backend.py` for openai-whisper package/model setup; it targets the shared user ASR venv by default. It must not be used to install ASR engines such as `mlx_whisper` or to download arbitrary ASR models.
 
 ## Future One-Key Runner Behavior
 

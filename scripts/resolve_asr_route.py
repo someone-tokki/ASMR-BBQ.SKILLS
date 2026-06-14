@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from shared_asr_env import shared_whisper_available, shared_whisper_python
+
 
 PLATFORM_ASR_CANDIDATES = [
     "http://127.0.0.1:8000/v1",
@@ -47,6 +49,16 @@ def existing_asr_files(paths: list[Path]) -> list[Path]:
 
 def module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def python_whisper_available() -> bool:
+    return module_available("whisper") or shared_whisper_available()
+
+
+def python_whisper_next_action() -> str:
+    if shared_whisper_available() and not module_available("whisper"):
+        return f"Run scripts/transcribe_whisper.py; it will delegate to the shared Whisper Python at {shared_whisper_python().as_posix()}."
+    return "Run scripts/transcribe_whisper.py with the local Python openai-whisper package."
 
 
 def model_value(config: dict[str, Any], key: str) -> str:
@@ -174,16 +186,17 @@ def build_route(args: argparse.Namespace) -> dict[str, Any]:
                 "next_action": "Run scripts/transcribe_openai_audio.py against the configured local ASR API endpoint.",
                 "blocked_reason": "",
             }
-        if module_available("whisper"):
+        if python_whisper_available():
             return {
                 "status": "ok",
                 "decision": "run_python_whisper",
                 "asr_backend": "python-whisper",
                 "asr_model": model,
+                "shared_whisper_python": shared_whisper_python().as_posix() if shared_whisper_available() else "",
                 "existing_asr_count": len(asr_files),
                 "existing_asr_files": [path.as_posix() for path in asr_files],
                 "probes": platform_probes + explicit_probes,
-                "next_action": "Run scripts/transcribe_whisper.py with the local Python openai-whisper package.",
+                "next_action": python_whisper_next_action(),
                 "blocked_reason": "",
             }
         return {
@@ -194,22 +207,23 @@ def build_route(args: argparse.Namespace) -> dict[str, Any]:
             "existing_asr_count": len(asr_files),
             "existing_asr_files": [path.as_posix() for path in asr_files],
             "probes": platform_probes + explicit_probes,
-            "next_action": "After user approval, run scripts/setup_whisper_backend.py --install-package --download-model --model <model>, then run scripts/transcribe_whisper.py.",
-            "blocked_reason": "No reachable local platform/local ASR API was detected and Python package `whisper` is not importable. Use the packaged setup script to install openai-whisper and download/cache the selected model; do not guess other ASR backends.",
+            "next_action": "After user approval, run scripts/setup_whisper_backend.py --install-package --download-model --model <model>, then run scripts/transcribe_whisper.py. The setup script uses the shared user ASR venv by default.",
+            "blocked_reason": "No reachable local platform/local ASR API was detected and Python Whisper is not available in the current interpreter or shared user ASR venv. Use the packaged setup script; do not guess other ASR backends.",
         }
 
     if configured_backend in {"python-whisper", "whisper", "openai-whisper"}:
         model = whisper_model(args, config)
-        ready = module_available("whisper")
+        ready = python_whisper_available()
         return {
             "status": "ok" if ready else "blocked",
             "decision": "run_python_whisper" if ready else "setup_python_whisper_required",
             "asr_backend": "python-whisper",
             "asr_model": model,
+            "shared_whisper_python": shared_whisper_python().as_posix() if shared_whisper_available() else "",
             "existing_asr_count": len(asr_files),
             "existing_asr_files": [path.as_posix() for path in asr_files],
-            "next_action": "Run scripts/transcribe_whisper.py." if ready else "After user approval, run scripts/setup_whisper_backend.py --install-package --download-model --model <model>.",
-            "blocked_reason": "" if ready else "Python package `whisper` is not importable.",
+            "next_action": python_whisper_next_action() if ready else "After user approval, run scripts/setup_whisper_backend.py --install-package --download-model --model <model>. The setup script uses the shared user ASR venv by default.",
+            "blocked_reason": "" if ready else "Python Whisper is not available in the current interpreter or shared user ASR venv.",
         }
 
     if configured_backend in {"local-asr-api", "openai-audio", "local-service"}:
@@ -302,6 +316,8 @@ def main() -> int:
         print(f"ASR_BASE_URL={route['asr_base_url']}")
     if route.get("asr_model"):
         print(f"ASR_MODEL={route['asr_model']}")
+    if route.get("shared_whisper_python"):
+        print(f"SHARED_WHISPER_PYTHON={route['shared_whisper_python']}")
     print(f"EXISTING_ASR_COUNT={route['existing_asr_count']}")
     if route.get("probes"):
         for probe in route["probes"]:
