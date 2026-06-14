@@ -2,7 +2,7 @@
 
 适用场景：作品只有音频，没有官方台本、初稿台本或可用文本。目标仍是为每条音频生成独立、可挂载、自然可读的简体中文字幕。
 
-开始前必须用 `docs/task_routing.md` 确认属于无台本路线，再阅读 `docs/asmr_translation_corpus.md` 索引，并按需要加载 `references/style.md`、`references/terms.md` 和 `references/risk-notes.md`。完成后把新发现的术语、错词和风格规则追加回对应 reference 或结构化风险库，并注明“无台本验证”。
+开始前必须用 `docs/task_routing.md` 确认属于无台本路线，再阅读 `docs/asmr_translation_corpus.md` 索引，并按需要加载 `references/style.md`、`references/terms.md` 和 `references/risk-notes.md`。完成后先把新发现的术语、错词和风格规则写入项目 work record，并注明“无台本验证”；收尾时询问用户是否要修正或整理学习库，只有明确 approve 的条目才迁移到 shared corpus。
 
 ## 核心原则
 
@@ -720,13 +720,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    每完成一个作品，都要从本次翻译、模型 QC、风险扫描、可读性检查、抽听/台本复核和人工修正中提炼可复用经验。学习库维护规则见 `docs/learning_library_guide.md`；交付前必须做 learning self-check，确认没有把未证实内容写成全局规则。
 
-   学习分三层：Skill 内置 `references/` 和 `data/subtitle_risk_patterns.json` 只读；用户长期学习库存放跨作品确认经验；`$PROJECT_ROOT/learning/` 只保存本次作品的 work record 和晋升草稿。普通翻译任务不要直接写 Skill 包内 `references/`。
+   学习分三层：Skill 内置 `references/` 和 `data/subtitle_risk_patterns.json` 只读；用户长期学习库存放跨作品确认经验；`$PROJECT_ROOT/learning/` 只保存本次作品的 work record 和 shared corpus review 草稿。普通翻译任务不要直接写 Skill 包内 `references/`。
 
    更新流程：
 
    - 每个完成的作品都必须在 `$PROJECT_ROOT/learning/work_record.md` 追加工作记录。
    - work-only 内容只留在 work record，不晋升到用户长期库。
-   - confirmed 的可复用风格、术语、风险说明，晋升到用户长期学习库。
+   - 收尾时询问用户是否还有要修正的地方，以及是否现在整理学习库；若还有修正需求，先完成修正和受影响检查。
+   - 可复用风格、术语、风险说明先进入 shared corpus review packet 或长期 review 队列；只有用户明确 approve 的条目才能晋升到用户长期学习库。
    - pending 内容写入 work record 或用户长期 `references/pending.md`，不要写成定论。
    - false-positive 写入用户长期 `references/risk-notes.md`，说明误报边界。
    - 可机械扫描的确认规则写入用户长期 `data/subtitle_risk_patterns.local.json`。
@@ -742,7 +743,6 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      "$PROJECT_ROOT" \
      --learning-paths "$PROJECT_ROOT/learning_paths.json" \
      --append-work-record \
-     --promote-confirmed \
      --out "$PROJECT_ROOT/learning/learning_update.md"
    ```
 
@@ -754,6 +754,25 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --work-record-dir "$PROJECT_ROOT/learning" \
      --copy \
      --json-out "$PROJECT_ROOT/learning/imported_learning_artifacts.json"
+   ```
+
+   收尾时询问用户是否还有要修正的地方，或是否现在整理学习库。若用户选择整理学习库，再询问 shared corpus review 选择：`agent-assisted`、`user-review` 或 `skip`。除非用户明确 approve 具体条目，不要把项目候选直接写入用户长期库。若用户选择进入 review，用：
+
+   ```bash
+   python scripts/manage_shared_corpus_review.py \
+     "$PROJECT_ROOT" \
+     --choice agent-assisted \
+     --evidence "$PROJECT_ROOT/learning/work_record.md" \
+     --evidence "$PROJECT_ROOT/qc_report.json" \
+     --json-out "$PROJECT_ROOT/learning/shared_corpus_review_report.json"
+   ```
+
+   当前项目 review 选择处理完后，检查长期 review 缓冲区；如果还有 pending 项，询问用户是否现在处理：
+
+   ```bash
+   python scripts/manage_shared_corpus_review.py \
+     --list-queue \
+     --json-out "$PROJECT_ROOT/learning/review_queue_status.json"
    ```
 
 ## 无台本质量标准
@@ -776,5 +795,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 - `project_config.json` 路径和最终 `output_format`。
 - 是否做了听感抽检。
 - 有哪些未能完全确认的句子或轨道。
-- 本次新增了哪些语料库/风险库经验，或说明没有发现值得沉淀的新规则。
-- 学习自检摘要：哪些内容进入 project lessons，哪些进入共享 reference，哪些保持 pending/project-only，哪些候选被判定为误报或不学习。
+- 本次新增了哪些项目级经验，或说明没有发现值得沉淀的新规则。
+- 学习自检摘要：哪些内容进入 work record，哪些进入 shared corpus review packet/queue，哪些保持 pending/project-only，哪些候选被判定为误报或不学习。
+- 说明 shared corpus review 状态：用户选择 `agent-assisted`、`user-review`、`skip`，或尚未选择；未获明确 approve 的内容不得称为已进入 shared corpus。
+- 说明 review 缓冲区是否还有 pending packet；如有，询问用户是否现在处理或继续保留。

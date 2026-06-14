@@ -148,4 +148,4 @@ python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage
 
 `draft` 可以跳过完整模型 QC 和学习库更新，但仍必须保持 SRT 结构、编号、时间轴、覆盖率等质量底线。正式交付建议使用 `standard` 或 `premium`。
 
-如果本轮进入学习库更新，先按 `docs/learning_library_guide.md` 解析学习路径：项目记录写入 `$PROJECT_ROOT/learning/work_record.md`，confirmed 的可复用经验再晋升到用户长期学习库 `${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`。普通作品流程不要直接写已安装 Skill 包内的 `references/` 或 `data/subtitle_risk_patterns.json`。
+如果本轮进入学习库更新，先按 `docs/learning_library_guide.md` 解析学习路径：项目记录写入 `$PROJECT_ROOT/learning/work_record.md`；收尾时若用户选择整理学习库，可复用经验先进入 shared corpus review，只有明确 approve 的条目才迁移到用户长期学习库 `${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`。普通作品流程不要直接写已安装 Skill 包内的 `references/` 或 `data/subtitle_risk_patterns.json`。

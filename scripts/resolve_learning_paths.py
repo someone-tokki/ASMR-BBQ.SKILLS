@@ -15,11 +15,15 @@ USER_FILES = {
     "risk_notes": "references/risk-notes.md",
     "pending": "references/pending.md",
     "work_index": "references/work-index.md",
+    "review_queue": "review_queue/index.md",
+    "review_queue_json": "review_queue/index.json",
     "risk_patterns": "data/subtitle_risk_patterns.local.json",
 }
 WORK_FILES = {
     "work_record": "work_record.md",
     "promote_candidates": "promote_candidates.md",
+    "shared_corpus_review": "shared_corpus_review.md",
+    "shared_corpus_review_json": "shared_corpus_review.json",
     "pending": "pending.md",
     "risk_candidates": "risk_candidates.json",
     "learning_summary": "learning_summary.json",
@@ -74,13 +78,15 @@ def build_report(project_root: Path, *, user_learning_dir: Path | None = None, c
                 "risk_notes": "User ASMR Risk Notes",
                 "pending": "User ASMR Pending Notes",
                 "work_index": "ASMR Work Learning Index",
+                "review_queue": "Shared Corpus Review Queue",
+                "review_queue_json": "[]",
                 "risk_patterns": "[]",
             }.get(key, key)
             path = user_dir / rel
-            if key == "risk_patterns":
+            if key in {"risk_patterns", "review_queue_json"}:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if not path.exists():
-                    path.write_text("[]\n", encoding="utf-8")
+                    path.write_text(f"{title}\n", encoding="utf-8")
             else:
                 ensure_file(path, title)
         work_dir.mkdir(parents=True, exist_ok=True)

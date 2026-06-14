@@ -221,7 +221,19 @@ ASMR 字幕不是普通影视字幕。你可以在开工前给风格要求：
 
 不确定的经验会先进 pending，不会直接当成全局规则。
 
-学习库维护的详细规则见 `docs/learning_library_guide.md`。如果你希望某条经验只对当前作品生效、先放 pending、或不要写入用户长期学习库，可以直接告诉 agent。每个作品都会先写 `$PROJECT_ROOT/learning/work_record.md`，确认可复用后再晋升到用户长期学习库；如果需要，agent 会先用 `scripts/resolve_learning_paths.py "$PROJECT_ROOT"` 解析本轮学习路径，再执行写入。
+学习库维护的详细规则见 `docs/learning_library_guide.md`。如果你希望某条经验只对当前作品生效、先放 pending、或不要写入用户长期学习库，可以直接告诉 agent。每个作品都会先写 `$PROJECT_ROOT/learning/work_record.md`；确认可复用的候选会先进入 shared corpus review，只有你明确 approve 后才迁移到用户长期学习库。如果需要，agent 会先用 `scripts/resolve_learning_paths.py "$PROJECT_ROOT"` 解析本轮学习路径，再执行写入。
+
+完整任务收尾时，agent 会像以前一样先问你还有没有要修正的地方；同时也会问你要不要现在整理学习库。如果你选择整理，它会继续询问是否进入 shared corpus review：
+
+```text
+agent-assisted：让 agent 协助提取候选并逐条说明证据和适用边界。
+user-review：只加入 review 队列，你之后自己审核。
+skip：本次只保留项目记录，不进入 shared corpus review。
+```
+
+进入 review 不等于已经写入长期学习库。只有你明确 approve 的条目，才会迁移到共享的 `style.md`、`terms.md`、`risk-notes.md` 或 `subtitle_risk_patterns.local.json`。
+
+如果 review 队列里还有以前积压的待审项目，agent 会在本次学习回收后提醒你还有多少个 pending packet，并询问要不要现在一起处理。你也可以选择继续保留到之后。
 
 ## 可以让 agent 抓取作品信息
 

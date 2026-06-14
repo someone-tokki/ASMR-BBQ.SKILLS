@@ -42,7 +42,7 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
 - Use scripts for checks instead of relying on eyeballing.
 - Use `scripts/subtitle_io.py` for local SRT parsing/composition; core workflow scripts should not require the third-party `srt` package.
 - Treat risk scans and QC reports as candidate evidence, not automatic truth.
-- Treat the learning loop as a required finalization step for completed works. Before final response, produce a concise learning summary: what was added to project lessons, what was promoted to shared style/terms/risk references, what remained pending or project-only, and what was deliberately not learned to avoid polluting the corpus.
+- Treat the learning loop as a required finalization step for completed works. At wrap-up, keep the user-facing prompt natural: ask whether anything still needs correction, and whether they want the learning library organized now. If corrections are requested, handle them before shared-corpus review. Before final response, produce a concise learning summary: what was added to the project work record, what remains pending or project-only, what is eligible for shared corpus review, and what was deliberately not learned to avoid polluting the corpus. Do not automatically promote project findings to the user long-term corpus; when the user wants learning-library organization, ask whether they want agent-assisted review, user review queue only, or no shared corpus review for this work. Also check the shared corpus review queue and, if pending entries exist, ask whether to process the buffer now or defer it.
 - Do not store API keys, model secrets, or private absolute paths in configs or logs.
 - Do not mix ASR, partial files, reports, or review notes into final subtitle directories.
 - After changing workflow docs, tools, QC policy, config behavior, platform/backend rules, or output rules, update this `SKILL.md` in the same turn so the agent entrypoint stays current. If a change is only a log, report, fixture, or generated artifact with no agent-facing behavior change, verify `SKILL.md` and state that no content update was needed.
@@ -280,22 +280,26 @@ Before final delivery:
 2. Confirm high-risk findings are handled or explicitly recorded.
 3. Confirm readability warnings are reviewed, especially high CPS and over-fragmentation.
 4. Confirm mandatory QC is completed and clear issues are corrected.
-5. Run the learning loop before final response:
+5. At wrap-up, ask whether anything still needs correction and whether the user wants learning-library organization now. If the user asks for corrections, handle them and rerun affected checks before shared-corpus review. Work records can be drafted as part of delivery, but do not create review packets, queue entries, or migrations until the user chooses to organize/review learning-library items unless the user explicitly requested learning-library maintenance.
+6. Run the learning loop before final response:
    - Read `docs/learning_library_guide.md` and classify every candidate lesson as `confirmed`, `project-only`, `pending`, or `false-positive`.
    - Extract reusable lessons from final subtitles, `qc_report.json`, risk findings, readability reports, and manual corrections.
    - Resolve write targets with `scripts/resolve_learning_paths.py`; Skill package `references/` and `data/subtitle_risk_patterns.json` are read-only during ordinary subtitle work.
    - Add a `$PROJECT_ROOT/learning/work_record.md` entry for every completed work, even when no new global rule is found.
-   - Extract reusable confirmed lessons into the user long-term learning library: durable terminology to `references/terms.md`, style/pacing rules to `references/style.md`, and easy-mistake/ASR-risk context or false-positive notes to `references/risk-notes.md`.
-   - Add mechanically scannable confirmed risks to the user long-term `data/subtitle_risk_patterns.local.json`.
+   - If the user wants learning-library organization, ask whether this completed project should enter `agent-assisted shared corpus review`, be added to the review queue for `user-review`, or `skip shared corpus review`. Only after that choice, put reusable-looking findings into `$PROJECT_ROOT/learning/shared_corpus_review.md` and `shared_corpus_review.json`, and add the project to the user review queue. Do not promote them to the user long-term learning library unless the user explicitly approves specific items.
+   - If the user chooses review, run `scripts/manage_shared_corpus_review.py "$PROJECT_ROOT" --choice <agent-assisted|user-review>` so future agents can find the pending review through `--list-queue`. If the user approves individual candidates, run `scripts/manage_shared_corpus_review.py --apply-approved --packet "$PROJECT_ROOT/learning/shared_corpus_review.json"`.
+   - Check the existing review buffer with `scripts/manage_shared_corpus_review.py --list-queue --json-out "$PROJECT_ROOT/learning/review_queue_status.json"` after the current project review choice is handled. If `pending_count` is greater than zero, tell the user how many pending review packets exist and ask whether they want agent help processing them now or prefer to defer.
+   - After approval, extract reusable confirmed lessons into the user long-term learning library: durable terminology to `references/terms.md`, style/pacing rules to `references/style.md`, and easy-mistake/ASR-risk context or false-positive notes to `references/risk-notes.md`.
+   - After approval, add mechanically scannable confirmed risks to the user long-term `data/subtitle_risk_patterns.local.json`.
    - Mark uncertain lessons in the project or user long-term `references/pending.md` instead of treating them as confirmed rules.
    - Use `scripts/update_learning_library.py` to draft or append the per-project learning record, then manually fill reusable lessons before delivery.
-   - Do a learning self-check: if no shared reference was updated, explicitly record whether there were no reusable lessons, only project-specific lessons, only pending evidence, or a user request not to globalize the lesson.
-6. Convert/export according to `output_format`:
+   - Do a learning self-check: if no shared reference was updated, explicitly record whether there were no reusable lessons, only project-specific lessons, only pending evidence, pending user review, or a user request not to globalize the lesson.
+7. Convert/export according to `output_format`:
    - `vtt`: final `.zh.vtt`.
    - `srt`: final `.zh.srt`.
    - `both`: both `.zh.srt` and `.zh.vtt`.
    Use `scripts/export_final_subtitles.py "$ZH_SRT_DIR" "$FINAL_SUBTITLE_DIR" --format "$OUTPUT_FORMAT" --glob "*.zh.srt" --overwrite` for final export.
-7. Export final subtitles to `$FINAL_SUBTITLE_DIR`, defaulting to `$SOURCE_PROJECT_DIR/subtitles/`, and keep that directory limited to final `.zh.vtt/.zh.srt` files.
-8. Run `scripts/validate_subtitles.py --final-dir "$FINAL_SUBTITLE_DIR"` after export.
+8. Export final subtitles to `$FINAL_SUBTITLE_DIR`, defaulting to `$SOURCE_PROJECT_DIR/subtitles/`, and keep that directory limited to final `.zh.vtt/.zh.srt` files.
+9. Run `scripts/validate_subtitles.py --final-dir "$FINAL_SUBTITLE_DIR"` after export.
 
-Report the final paths, output format, QC status, unresolved items, and a learning summary that names updated files and pending/project-only decisions.
+Report the final paths, output format, QC status, unresolved items, and a learning summary that names updated files, pending/project-only decisions, and the shared corpus review status.

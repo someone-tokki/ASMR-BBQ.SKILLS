@@ -153,7 +153,7 @@ def main() -> int:
     parser.add_argument("--date", default=date.today().isoformat(), help="Entry date. Defaults to today.")
     parser.add_argument("--out", help="Write Markdown draft to this path. Defaults to stdout.")
     parser.add_argument("--append-work-record", action="store_true", help="Append the work record entry if it does not exist.")
-    parser.add_argument("--promote-confirmed", action="store_true", help="Append confirmed items to the user long-term learning library.")
+    parser.add_argument("--promote-confirmed", action="store_true", help="Deprecated: direct promotion is kept for compatibility. Prefer manage_shared_corpus_review.py and explicit user approval.")
     parser.add_argument("--learning-paths", default="", help="Optional JSON path from resolve_learning_paths.py.")
     parser.add_argument("--work-record", default="", help="Override work_record.md path.")
     parser.add_argument("--user-learning-dir", default="", help="Override user learning directory.")
@@ -176,12 +176,15 @@ def main() -> int:
     user_risk = user_learning_dir / "references/risk-notes.md"
     user_pending = user_learning_dir / "references/pending.md"
     user_work_index = user_learning_dir / "references/work-index.md"
+    user_review_queue = user_learning_dir / "review_queue/index.json"
     user_risk_patterns = user_learning_dir / "data/subtitle_risk_patterns.local.json"
+    shared_review = work_record.parent / "shared_corpus_review.json"
 
     entry = build_work_record_entry(config, today=args.date)
     draft = (
         f"# Learning Update Draft - {work_id}\n\n"
-        "- Write the work record first; then promote only confirmed items to the user learning library.\n"
+        "- Write the work record first; then place reusable-looking items into shared corpus review.\n"
+        "- Promote items to the user learning library only after explicit user approval.\n"
         "- This draft intentionally targets a short-lived work record, not the skill package itself.\n\n"
         "## Work Record Entry\n\n"
         f"{entry}\n"
@@ -191,6 +194,8 @@ def main() -> int:
         f"- risk-notes: `{user_risk.as_posix()}`\n"
         f"- pending: `{user_pending.as_posix()}`\n"
         f"- work-index: `{user_work_index.as_posix()}`\n"
+        f"- review-queue: `{user_review_queue.as_posix()}`\n"
+        f"- project-review-packet: `{shared_review.as_posix()}`\n"
         f"- risk-patterns: `{user_risk_patterns.as_posix()}`\n"
     )
 
@@ -206,6 +211,7 @@ def main() -> int:
         print(f"work_record_appended={str(True).lower()}")
 
     if args.promote_confirmed:
+        print("warning=promote_confirmed_deprecated_use_manage_shared_corpus_review", flush=True)
         append_user_reference(user_work_index, "ASMR Work Index", f"- {work_id}: {entry.splitlines()[0]}")
     return 0
 
