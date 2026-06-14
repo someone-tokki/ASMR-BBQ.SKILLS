@@ -213,16 +213,15 @@ ASMR 字幕不是普通影视字幕。你可以在开工前给风格要求：
 把这部作品里确认过的角色称呼和成人术语沉淀下来，下次同社团作品复用。
 ```
 
-学习库通常会分成：
+学习库通常会分成三层：
 
-- 项目经验：每个作品都记录。
-- 风格规则：口吻、称呼、拟声、可读性偏好。
-- 术语库：角色称呼、固定词、成人术语译法。
-- 风险库：容易错的 ASR 词、误报说明、需要人工确认的候选。
+- Skill 内置基础库：`references/` 和 `data/subtitle_risk_patterns.json`，是只读的默认参考。
+- 用户长期学习库：`${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`，默认放在用户家目录下，保存跨作品确认过的风格、术语和风险规则，方便同机其他安装了本 Skill 的 agent 共用。
+- 项目级工作记录：`$PROJECT_ROOT/learning/`，保存本作的 work record、pending 和导入草稿。
 
 不确定的经验会先进 pending，不会直接当成全局规则。
 
-学习库维护的详细规则见 `docs/learning_library_guide.md`。如果你希望某条经验只对当前作品生效、先放 pending、或不要写入用户长期术语库，可以直接告诉 agent。每个作品都会先写 `$PROJECT_ROOT/learning/work_record.md`，确认可复用后再晋升到用户长期学习库。
+学习库维护的详细规则见 `docs/learning_library_guide.md`。如果你希望某条经验只对当前作品生效、先放 pending、或不要写入用户长期学习库，可以直接告诉 agent。每个作品都会先写 `$PROJECT_ROOT/learning/work_record.md`，确认可复用后再晋升到用户长期学习库；如果需要，agent 会先用 `scripts/resolve_learning_paths.py "$PROJECT_ROOT"` 解析本轮学习路径，再执行写入。
 
 ## 可以让 agent 抓取作品信息
 

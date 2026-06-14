@@ -31,11 +31,11 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def default_codex_home() -> Path:
-    value = os.environ.get("CODEX_HOME")
+def default_user_learning_dir() -> Path:
+    value = os.environ.get("ASMR_SUBTITLE_LEARNING_DIR")
     if value:
         return Path(value).expanduser()
-    return Path.home() / ".codex"
+    return Path.home() / "ASMR-Subtitle-Translator" / "learning"
 
 
 def repo_root() -> Path:
@@ -44,10 +44,6 @@ def repo_root() -> Path:
 
 def builtin_reference_dir() -> Path:
     return repo_root() / "references"
-
-
-def user_learning_dir(codex_home: Path) -> Path:
-    return codex_home / "asmr-subtitle-translator" / "learning"
 
 
 def work_record_dir(project_root: Path) -> Path:
@@ -65,8 +61,8 @@ def ensure_file(path: Path, title: str) -> None:
         path.write_text(f"# {title}\n\n", encoding="utf-8")
 
 
-def build_report(project_root: Path, *, codex_home: Path, create: bool) -> dict[str, Any]:
-    user_dir = user_learning_dir(codex_home)
+def build_report(project_root: Path, *, user_learning_dir: Path | None = None, codex_home: Path | None = None, create: bool) -> dict[str, Any]:
+    user_dir = user_learning_dir or (codex_home / "asmr-subtitle-translator" / "learning" if codex_home else default_user_learning_dir())
     work_dir = work_record_dir(project_root)
     user_paths = {key: (user_dir / rel).as_posix() for key, rel in USER_FILES.items()}
     work_paths = {key: (work_dir / rel).as_posix() for key, rel in WORK_FILES.items()}
@@ -95,6 +91,8 @@ def build_report(project_root: Path, *, codex_home: Path, create: bool) -> dict[
         "project_root": project_root.as_posix(),
         "builtin_reference_dir": builtin_reference_dir().as_posix(),
         "user_learning_dir": user_dir.as_posix(),
+        "user_learning_env": "ASMR_SUBTITLE_LEARNING_DIR",
+        "legacy_codex_learning_dir": (Path.home() / ".codex" / "asmr-subtitle-translator" / "learning").as_posix(),
         "work_record_dir": work_dir.as_posix(),
         "user_paths": user_paths,
         "work_paths": work_paths,
@@ -110,14 +108,16 @@ def build_report(project_root: Path, *, codex_home: Path, create: bool) -> dict[
 def main() -> int:
     parser = argparse.ArgumentParser(description="Resolve ASMR subtitle learning paths without writing to the skill package.")
     parser.add_argument("project_root")
-    parser.add_argument("--codex-home", default="")
+    parser.add_argument("--user-learning-dir", default="", help="Override the shared user learning directory. Defaults to ~/ASMR-Subtitle-Translator/learning or ASMR_SUBTITLE_LEARNING_DIR.")
+    parser.add_argument("--codex-home", default="", help="Deprecated compatibility option; maps to <codex-home>/asmr-subtitle-translator/learning.")
     parser.add_argument("--no-create", action="store_true", help="Only report paths; do not create user/work learning directories.")
     parser.add_argument("--json-out", default="")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser()
-    codex_home = Path(args.codex_home).expanduser() if args.codex_home else default_codex_home()
-    report = build_report(project_root, codex_home=codex_home, create=not args.no_create)
+    user_learning = Path(args.user_learning_dir).expanduser() if args.user_learning_dir else None
+    codex_home = Path(args.codex_home).expanduser() if args.codex_home else None
+    report = build_report(project_root, user_learning_dir=user_learning, codex_home=codex_home, create=not args.no_create)
     if args.json_out:
         write_json(Path(args.json_out), report)
     print(json.dumps(report, ensure_ascii=False, indent=2))

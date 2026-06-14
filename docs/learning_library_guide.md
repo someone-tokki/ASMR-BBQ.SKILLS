@@ -7,7 +7,7 @@
 学习库分成三层：
 
 - Skill 内置基础库：`references/` 和 `data/subtitle_risk_patterns.json`。这是包内默认规则，只读，不作为长期个人记忆。
-- 用户长期学习库：`${CODEX_HOME:-~/.codex}/asmr-subtitle-translator/learning/`。这里保存跨作品可复用的确认经验，不应被 Git pull 或重新安装 Skill 覆盖。
+- 用户长期学习库：`${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`。这里保存跨作品可复用的确认经验，默认放在用户家目录下，方便同一台机器上其他安装了本 Skill 的 agent 共用；它不应被 Git pull 或重新安装 Skill 覆盖。
 - 单作品工作记录：`$PROJECT_ROOT/learning/`。这里只保存这一个作品的回收记录、候选和中转草稿，作品结束后可以随项目一起归档或移走。
 
 ## 什么时候更新
@@ -74,7 +74,9 @@
 
 ## 用户长期库写入要求
 
-用户长期库只接收 confirmed 条目。工作记录中的内容只有在确认可复用后，才会被晋升到 `${CODEX_HOME:-~/.codex}/asmr-subtitle-translator/learning/`。
+用户长期库只接收 confirmed 条目。工作记录中的内容只有在确认可复用后，才会被晋升到 `${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`。
+
+如需把长期库放到其他共享位置，可设置环境变量 `ASMR_SUBTITLE_LEARNING_DIR`，或在解析路径时使用 `scripts/resolve_learning_paths.py "$PROJECT_ROOT" --user-learning-dir <dir>`。`CODEX_HOME` 只作为旧兼容参数，不再是默认学习库位置。
 
 ## 风格库写入原则
 

@@ -41,6 +41,14 @@ This project should keep subtitle checks, config records, and reports portable a
 - Do not store API keys in `project_config.json`.
 - Use relative paths in examples and reports when the file lives in the repository workspace.
 
+## Learning Paths
+
+- Skill package references are portable defaults: `references/` and `data/subtitle_risk_patterns.json` are read-only during ordinary subtitle work.
+- Resolve per-run learning targets with `scripts/resolve_learning_paths.py "$PROJECT_ROOT"` before writing learning records. The resolver reports the built-in reference directory, the user long-term learning directory, and `$PROJECT_ROOT/learning/`.
+- Project-specific lessons, pending notes, imported stray reference files, and promotion drafts belong under `$PROJECT_ROOT/learning/` so they travel with the subtitle project.
+- Confirmed reusable lessons belong in the user long-term learning library under `${ASMR_SUBTITLE_LEARNING_DIR:-~/ASMR-Subtitle-Translator/learning}/`, not in the installed Skill package.
+- Mechanically scannable confirmed user rules should use the user long-term `data/subtitle_risk_patterns.local.json`; the built-in `data/subtitle_risk_patterns.json` remains the packaged default rule set.
+
 ## Environment Check
 
 Run:

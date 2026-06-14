@@ -167,10 +167,10 @@ def main() -> int:
         if path.exists():
             learning_paths = json.loads(path.read_text(encoding="utf-8"))
     else:
-        learning_paths = build_learning_paths_report(Path(args.project_root), codex_home=Path.home() / ".codex", create=False)
+        learning_paths = build_learning_paths_report(Path(args.project_root), create=False)
 
     work_record = Path(args.work_record) if args.work_record else Path((learning_paths or {}).get("work_record_dir", Path(args.project_root) / "learning")) / "work_record.md"
-    user_learning_dir = Path(args.user_learning_dir) if args.user_learning_dir else Path((learning_paths or {}).get("user_learning_dir", Path.home() / ".codex" / "asmr-subtitle-translator" / "learning"))
+    user_learning_dir = Path(args.user_learning_dir) if args.user_learning_dir else Path((learning_paths or {}).get("user_learning_dir", Path.home() / "ASMR-Subtitle-Translator" / "learning"))
     user_style = user_learning_dir / "references/style.md"
     user_terms = user_learning_dir / "references/terms.md"
     user_risk = user_learning_dir / "references/risk-notes.md"
