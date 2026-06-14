@@ -13,7 +13,7 @@ Use this skill to run an agent-led Japanese ASMR subtitle workflow. The agent is
 2. Read `docs/asmr_translation_corpus.md` as the corpus index, then load only the needed references:
    - Translation or subtitle editing: `references/style.md` and `references/terms.md`.
    - Risk scan, QC, or correction: `references/risk-notes.md` and, when terminology matters, `references/terms.md`.
-   - Learning-loop updates: `references/project-lessons.md` and `references/pending.md` as needed.
+   - Learning-loop updates: `docs/learning_library_guide.md`, then the resolved user learning library and `$PROJECT_ROOT/learning/` paths as needed.
    - Learning-library maintenance or user questions about what gets learned: `docs/learning_library_guide.md`.
 3. Choose the workflow:
    - With script or official text: read `docs/asmr_subtitle_workflow_with_script.md`.
@@ -68,7 +68,7 @@ Use the returned `work_id`, `project_root`, `source_project_dir`, and `final_sub
    - oMLX/common local server: `http://127.0.0.1:8000/v1`
    - LM Studio: `http://127.0.0.1:1234/v1`
    - Ollama: `http://127.0.0.1:11434/v1`
-   On this user's machine, prefer `qwen3.6-27b` for translation and QC when that model is available; otherwise use the best configured local chat model.
+   For bulk translation, prefer a non-reasoning instruct/chat model such as `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` or another verified fast Japanese/Chinese model. Qwen3.x reasoning models may spend hidden thinking tokens even when visible `<think>` output is absent; use them for bulk translation only after behavior probing confirms low latency, stable JSON, and no blank responses.
 4. Create or update `$PROJECT_ROOT/project_config.json` with `scripts/manage_project_config.py`, then create or update `$PROJECT_ROOT/model_profile.json` with `scripts/manage_model_profile.py` when the user wants per-stage model choices.
 5. Use `--asr-backend auto` unless the user explicitly chooses `local-asr-api`, `python-whisper`, `mlx_whisper`, `external`, or another ASR backend. In auto mode, new ASR probes local platform API ports for `/audio/transcriptions` first, then configured `local-asr-api`, then the packaged Python Whisper route, then the controlled Python Whisper setup route.
 6. Use `--translate-backend auto` unless the user explicitly chooses `ollama`, `omlx`, `lmstudio`, or another backend.
@@ -161,7 +161,7 @@ python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" translate --from-
 python scripts/manage_model_profile.py resolve "$PROJECT_ROOT" qc --from-config
 ```
 
-ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`, with `qwen3.6-27b` as this user's preferred local default when available unless the user/project profile chooses another model. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR.
+ASR must use a Whisper-class model through `/audio/transcriptions` or the Python Whisper script. Translation and QC must use a chat model through `/chat/completions`. For bulk translation, default toward non-reasoning instruct models; do not assume Qwen3.x no-thinking controls work on every backend. Do not carry an ASR model into translation/QC, and do not carry the translation/QC chat model into ASR.
 
 Before translation, mandatory QC, or any additional QC refinement, run `scripts/prepare_model_stage.py` for the target chat stage. This is separate from Preflight: Preflight confirms which models the run intends to use; model-stage preparation confirms the target local model is reachable and can answer right now. If translation and QC use different models, the QC stage check is a hard gate:
 
@@ -169,6 +169,23 @@ Before translation, mandatory QC, or any additional QC refinement, run `scripts/
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY"
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage translate --from-config --api-key "$TRANSLATE_API_KEY"
 ```
+
+When the selected translation model is Qwen3.x, reasoning-class, unknown, or newly configured, add behavior probing before bulk work:
+
+```bash
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY" --probe-behavior --require-non-thinking --json-out "$PROJECT_ROOT/model_stage_translate.json"
+```
+
+If behavior probing reports `too_slow_reasoning_model`, `no_thinking_not_effective`, blank responses, or unstable JSON, stop and recommend a non-reasoning instruct model instead of trying to solve the problem only by changing chunk size.
+
+After the model-stage check, resolve model-aware chunk defaults before translation or QC:
+
+```bash
+python scripts/resolve_chunk_profile.py "$PROJECT_ROOT" translate --model-stage-report "$PROJECT_ROOT/model_stage_translate.json" --json-out "$PROJECT_ROOT/chunk_profile_translate.json"
+python scripts/resolve_chunk_profile.py "$PROJECT_ROOT" qc --model-stage-report "$PROJECT_ROOT/model_stage_qc.json" --json-out "$PROJECT_ROOT/chunk_profile_qc.json"
+```
+
+Use the resulting `defaults` as upper bounds for `--target-chars`, `--hard-chars`, chunk sizes, halo/context, QC tier, worker count, and reasoning token budget. Semantic continuity remains primary; model-aware profiles must not fragment ASMR dialogue mechanically.
 
 If the stage check reports `FAIL`, stop before the model call. HTTP 500 from `/chat/completions` commonly means the previous stage model still occupies memory, the target model failed to load or is too large, the backend cannot hot-switch from the request `model` field, the model id is wrong, or the service needs a manual reload/restart. Ask the user to release/unload the previous model or manually switch/load the target model, then rerun the stage check. Do not keep blind-retrying, and do not substitute the agent's own model.
 
@@ -236,7 +253,7 @@ Readability warnings are advisory. ASMR listeners read slowly, so `10` Chinese c
 ## Platform And Backend Rules
 
 - ASR defaults to local platform API probing first: oMLX/LM Studio/Ollama or another configured OpenAI-compatible base URL may be used for ASR only when `/audio/transcriptions` is reachable. If not, try configured `local-asr-api`, then packaged Python Whisper, then controlled setup.
-- Translation and QC default to existing local chat service ports when configured/available, using `qwen3.6-27b` as this user's preferred local model when available.
+- Translation and QC default to existing local chat service ports when configured/available. For bulk translation, prefer non-reasoning instruct/chat models; Qwen3.x reasoning models require behavior probing before production use because hidden thinking tokens can make subtitle chunks extremely slow or cause blank responses.
 - Windows/WSL default to Ollama for translation and QC when available.
 - If Ollama is unavailable and `translate_backend=auto`, fall back to another available OpenAI-compatible backend.
 - If the project explicitly sets `translate_backend=ollama`, missing Ollama is a blocker.
@@ -264,10 +281,11 @@ Before final delivery:
 5. Run the learning loop before final response:
    - Read `docs/learning_library_guide.md` and classify every candidate lesson as `confirmed`, `project-only`, `pending`, or `false-positive`.
    - Extract reusable lessons from final subtitles, `qc_report.json`, risk findings, readability reports, and manual corrections.
-   - Add a `references/project-lessons.md` entry for every completed work, even when no new global rule is found.
-   - Extract reusable project lessons into the shared references: durable terminology to `references/terms.md`, style/pacing rules to `references/style.md`, and easy-mistake/ASR-risk context or false-positive notes to `references/risk-notes.md`.
-   - Add mechanically scannable confirmed risks to `data/subtitle_risk_patterns.json`.
-   - Mark uncertain lessons in `references/pending.md` instead of treating them as confirmed rules.
+   - Resolve write targets with `scripts/resolve_learning_paths.py`; Skill package `references/` and `data/subtitle_risk_patterns.json` are read-only during ordinary subtitle work.
+   - Add a `$PROJECT_ROOT/learning/work_record.md` entry for every completed work, even when no new global rule is found.
+   - Extract reusable confirmed lessons into the user long-term learning library: durable terminology to `references/terms.md`, style/pacing rules to `references/style.md`, and easy-mistake/ASR-risk context or false-positive notes to `references/risk-notes.md`.
+   - Add mechanically scannable confirmed risks to the user long-term `data/subtitle_risk_patterns.local.json`.
+   - Mark uncertain lessons in the project or user long-term `references/pending.md` instead of treating them as confirmed rules.
    - Use `scripts/update_learning_library.py` to draft or append the per-project learning record, then manually fill reusable lessons before delivery.
    - Do a learning self-check: if no shared reference was updated, explicitly record whether there were no reusable lessons, only project-specific lessons, only pending evidence, or a user request not to globalize the lesson.
 6. Convert/export according to `output_format`:

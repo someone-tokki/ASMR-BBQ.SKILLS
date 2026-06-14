@@ -83,9 +83,15 @@ def build_config(args: argparse.Namespace, existing: dict[str, Any] | None = Non
             "translate_backend": args.translate_backend,
             "translate_base_url": args.translate_base_url,
             "translate_model": args.translate_model,
+            "translate_model_class": getattr(args, "translate_model_class", ""),
+            "translate_behavior_probe_required": getattr(args, "translate_behavior_probe_required", None),
+            "translate_require_non_thinking": getattr(args, "translate_require_non_thinking", None),
             "qc_backend": args.qc_backend,
             "qc_base_url": args.qc_base_url,
             "qc_model": args.qc_model,
+            "qc_model_class": getattr(args, "qc_model_class", ""),
+            "qc_behavior_probe_required": getattr(args, "qc_behavior_probe_required", None),
+            "qc_require_non_thinking": getattr(args, "qc_require_non_thinking", None),
         },
         "settings": {
             "output_format": args.output_format,
@@ -150,9 +156,15 @@ def add_common_init_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--translate-backend", default="auto", help="Backend record: auto, ollama, omlx, openai-compatible, or another project-specific value.")
     parser.add_argument("--translate-base-url", default="")
     parser.add_argument("--translate-model", default="")
+    parser.add_argument("--translate-model-class", default="")
+    parser.add_argument("--translate-behavior-probe-required", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--translate-require-non-thinking", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--qc-backend", default="auto", help="QC backend record. Defaults to auto and may differ from translation.")
     parser.add_argument("--qc-base-url", default="", help="QC chat API base URL. Defaults to translate_base_url when omitted in workflow usage.")
     parser.add_argument("--qc-model", default="")
+    parser.add_argument("--qc-model-class", default="")
+    parser.add_argument("--qc-behavior-probe-required", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--qc-require-non-thinking", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--output-format", default="vtt", choices=sorted(OUTPUT_FORMATS))
     parser.add_argument("--translate-chunk-size", type=int, default=9)
     parser.add_argument("--qc-chunk-size", type=int, default=18)

@@ -53,7 +53,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 - ASR 可选示例：用户明确选择 `mlx_whisper` 时，可用 `mlx-community/whisper-large-v3-mlx-4bit` 或其他已准备好的 ASR 模型。
 - 默认翻译后端：`auto`。Windows/WSL 优先 Ollama；macOS 可继续使用 oMLX 的 OpenAI-compatible 本地 API；LM Studio、本机其他推理服务或云端模型作为 fallback。
-- 翻译模型示例：`Qwen3.6-27B-MLX-VL-oQ6`
+- 翻译模型示例：`Qwen2.5-32B-Instruct-GGUF-Q4_K_M`
 - 依赖示例：`tqdm`, `PyYAML`, `pdftotext`
 
 替换原则：
@@ -164,7 +164,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    export LOCAL_MODEL_BASE_URL="http://127.0.0.1:8000/v1"  # 本地平台 API；LM Studio 常用 1234，Ollama 常用 11434
    export ASR_MODEL="large-v3"
    export TRANSLATE_BASE_URL="$LOCAL_MODEL_BASE_URL"
-   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-qwen3.6-27b}"  # 本机默认推荐；若 /models 中名称不同，用实际 model id
+   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-Qwen2.5-32B-Instruct-GGUF-Q4_K_M}"  # 本机默认推荐；若 /models 中名称不同，用实际 model id
    export QC_BASE_URL="${QC_BASE_URL:-$TRANSLATE_BASE_URL}"
    export QC_MODEL="${QC_MODEL:-$TRANSLATE_MODEL}"
 
@@ -376,7 +376,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 6. 初翻
 
-   默认使用 `auto` 后端选择：Windows/WSL 优先 Ollama；没有 Ollama 时回退到其他可用 OpenAI-compatible 服务；macOS 可继续优先使用 oMLX 的 OpenAI-compatible 本地 API。本机默认推荐翻译/QC 使用 `qwen3.6-27b`。先启动当前选择的本地推理服务，再设置当前项目使用的模型和 API 地址：
+   默认使用 `auto` 后端选择：Windows/WSL 优先 Ollama；没有 Ollama 时回退到其他可用 OpenAI-compatible 服务；macOS 可继续优先使用 oMLX 的 OpenAI-compatible 本地 API。本机默认推荐翻译/QC 使用 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M`。先启动当前选择的本地推理服务，再设置当前项目使用的模型和 API 地址：
 
    ```bash
    # macOS/oMLX 示例：
@@ -388,7 +388,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ```bash
    export TRANSLATE_BASE_URL="${TRANSLATE_BASE_URL:-$LOCAL_MODEL_BASE_URL}"
-   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-qwen3.6-27b}"
+   export TRANSLATE_MODEL="${TRANSLATE_MODEL:-Qwen2.5-32B-Instruct-GGUF-Q4_K_M}"
    export TRANSLATE_API_KEY="local-placeholder"
    export ZH_SRT_DIR="$PROJECT_ROOT/srt_work"
    export PROMO_ZH_SRT_DIR="$PROJECT_ROOT/promo_srt_work"
@@ -407,6 +407,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    ```
 
    如果这里失败，先处理本地模型服务，不要直接进入翻译。
+
+   随后解析当前模型适合的 chunk 默认值。agent 后续命令应读取 `chunk_profile_translate.json` 的 `defaults.translate`，不要继续固定套用同一组 chunk 参数：
+
+   ```bash
+   python scripts/resolve_chunk_profile.py "$PROJECT_ROOT" translate \
+     --model-stage-report "$PROJECT_ROOT/model_stage_translate.json" \
+     --json-out "$PROJECT_ROOT/chunk_profile_translate.json"
+   ```
 
    本篇：
 
@@ -562,6 +570,14 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    若返回 `FAIL`，不要运行 QC。HTTP 500 常见原因是上一阶段翻译模型仍占用显存/内存、QC 模型加载失败或过大、本地后端不支持按请求里的 `model` 自动热切换、模型名不匹配，或服务需要手动重载/重启。先让用户释放/卸载上一模型或在本地后端切到 QC 模型，再重跑阶段检查。
 
+   随后解析 QC chunk 默认值。agent 后续命令应读取 `chunk_profile_qc.json` 的 `defaults.qc`，根据模型类别选择 light/deep chunk 大小、`context_halo`、`qc_tier` 和必要的 `reasoning_token_budget`：
+
+   ```bash
+   python scripts/resolve_chunk_profile.py "$PROJECT_ROOT" qc \
+     --model-stage-report "$PROJECT_ROOT/model_stage_qc.json" \
+     --json-out "$PROJECT_ROOT/chunk_profile_qc.json"
+   ```
+
    ```bash
    python scripts/qc_srt_omlx.py \
      --asr-dir "$ASR_DIR" \
@@ -697,40 +713,42 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
 13. 更新学习库
 
-   每完成一个作品，都要从本次翻译、台本复核、模型 QC、风险扫描、可读性检查和人工修正中提炼可复用经验。不要只记录“做完了”，要把下次能用的东西沉淀下来。学习库维护规则见 `docs/learning_library_guide.md`；交付前必须做 learning self-check，确认没有把未证实内容写成全局规则。
+   每完成一个作品，都要从本次翻译、模型 QC、风险扫描、可读性检查、抽听/台本复核和人工修正中提炼可复用经验。学习库维护规则见 `docs/learning_library_guide.md`；交付前必须做 learning self-check，确认没有把未证实内容写成全局规则。
 
-   更新学习库：
+   学习分三层：Skill 内置 `references/` 和 `data/subtitle_risk_patterns.json` 只读；用户长期学习库存放跨作品确认经验；`$PROJECT_ROOT/learning/` 只保存本次作品的 work record 和晋升草稿。普通翻译任务不要直接写 Skill 包内 `references/`。
 
-   - 每个完成的作品都必须在 `references/project-lessons.md` 追加项目记录。
-   - 新术语写入 `references/terms.md`。
-   - 本作设定下更自然且可复用的译法和字幕风格规则写入 `references/style.md`。
-   - ASR 易错词、常见误译和误报说明写入 `references/risk-notes.md`。
-   - 本次踩坑和项目级修正例写入 `references/project-lessons.md`。
-   - 记录来源作品、轨道、日期、是否有台本。
-   - 若没有更新共享 reference，必须在最终说明里写清原因：无新增可泛化规则、仅 project-only、证据不足 pending，或用户要求不全局化。
+   更新流程：
 
-   同时整理风险库候选：
+   - 每个完成的作品都必须在 `$PROJECT_ROOT/learning/work_record.md` 追加工作记录。
+   - work-only 内容只留在 work record，不晋升到用户长期库。
+   - confirmed 的可复用风格、术语、风险说明，晋升到用户长期学习库。
+   - pending 内容写入 work record 或用户长期 `references/pending.md`，不要写成定论。
+   - false-positive 写入用户长期 `references/risk-notes.md`，说明误报边界。
+   - 可机械扫描的确认规则写入用户长期 `data/subtitle_risk_patterns.local.json`。
 
-   - 从 `qc_report.json` 中提取确认过的 ASR 错词和翻译雷区。
-   - 从 `risk_report.json` 中区分真阳性、误报和需要收窄的规则。
-   - 从最终手修中提取可机械扫描的高风险词或短语。
-   - 可机械扫描的确认规则写入 `data/subtitle_risk_patterns.json`；`references/risk-notes.md` 保留上下文、来源和适用条件。
-   - 不确定条目写入 `references/pending.md` 并标 `待验证`，不要写成定论。
-
-   可先生成学习库更新草稿：
+   先解析学习路径，再生成 work record 草稿：
 
    ```bash
+   python scripts/resolve_learning_paths.py \
+     "$PROJECT_ROOT" \
+     --json-out "$PROJECT_ROOT/learning_paths.json"
+
    python scripts/update_learning_library.py \
      "$PROJECT_ROOT" \
-     --out "$PROJECT_ROOT/learning_update.md"
+     --learning-paths "$PROJECT_ROOT/learning_paths.json" \
+     --append-work-record \
+     --promote-confirmed \
+     --out "$PROJECT_ROOT/learning/learning_update.md"
    ```
 
-   确认内容后，可追加项目经验骨架，再把可复用内容手动同步到对应 reference：
+   如果发现音声根目录或音频目录里散落 `reference/`、`references/`、`learning/` 等文件夹，先收集到 work record 的 imported 目录，不要继续在那里写：
 
    ```bash
-   python scripts/update_learning_library.py \
-     "$PROJECT_ROOT" \
-     --append-project-lesson
+   python scripts/collect_learning_artifacts.py \
+     "$SOURCE_PROJECT_DIR" \
+     --work-record-dir "$PROJECT_ROOT/learning" \
+     --copy \
+     --json-out "$PROJECT_ROOT/learning/imported_learning_artifacts.json"
    ```
 
 ## 交付清单

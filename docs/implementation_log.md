@@ -1526,3 +1526,59 @@ Do not record private paths, API keys, model secrets, or large command logs here
   - Weak ASR text lists may need tuning after real ASMR samples.
 - Next:
   - Validate and include in the next commit/package batch.
+
+## 2026-06-14 - Model Behavior And Chunk Profiles
+
+- Current task: add model behavior probing and model-aware chunk profile resolution for translation/QC.
+- Completed:
+  - Added `scripts/probe_chat_model_behavior.py` to test short local chat requests for latency, blank responses, visible thinking markers, and JSON stability.
+  - Extended `scripts/prepare_model_stage.py` with `--probe-behavior`, `--require-non-thinking`, and behavior report output; stage checks can now block slow/unstable reasoning models before bulk translation.
+  - Added model capability fields to `model_profile.json` handling: `model_class`, `behavior_probe_required`, and `require_non_thinking`.
+  - Updated project config handling to preserve per-stage model class/probe fields.
+  - Switched default translation/QC examples from Qwen3.6 reasoning-style defaults to a non-reasoning instruct example: `Qwen2.5-32B-Instruct-GGUF-Q4_K_M`.
+  - Added `data/model_chunk_profiles.json` and `scripts/resolve_chunk_profile.py` for model-aware translation/QC chunk defaults.
+  - Updated `SKILL.md`, workflow docs, platform/preflight docs, task routing, and user guide to require behavior probing for Qwen3.x/reasoning/unknown models and to resolve chunk profiles before translation/QC.
+- Modified files:
+  - `SKILL.md`
+  - `data/model_chunk_profiles.json`
+  - `docs/asmr_subtitle_workflow_no_script.md`
+  - `docs/asmr_subtitle_workflow_with_script.md`
+  - `docs/implementation_log.md`
+  - `docs/platform_compatibility.md`
+  - `docs/preflight_confirmation.md`
+  - `docs/task_routing.md`
+  - `docs/user_guide.md`
+  - `scripts/batch_translate_srt_omlx.py`
+  - `scripts/check_environment.py`
+  - `scripts/manage_model_profile.py`
+  - `scripts/manage_project_config.py`
+  - `scripts/prepare_model_stage.py`
+  - `scripts/prepare_run_profile.py`
+  - `scripts/probe_chat_model_behavior.py`
+  - `scripts/qc_srt_omlx.py`
+  - `scripts/resolve_chunk_profile.py`
+  - `scripts/translate_srt_omlx.py`
+- Validation commands:
+  - `python -B -m py_compile scripts/*.py`
+  - `python scripts/probe_chat_model_behavior.py --help`
+  - `python scripts/prepare_model_stage.py --help`
+  - `python scripts/resolve_chunk_profile.py --help`
+  - `python scripts/manage_model_profile.py init /private/tmp/model_behavior_profile --overwrite`
+  - `python scripts/manage_model_profile.py resolve /private/tmp/model_behavior_profile translate --json`
+  - `python scripts/prepare_model_stage.py /private/tmp/model_behavior_profile translate --previous-stage asr --skip-api --json-out /private/tmp/model_behavior_profile/model_stage_translate.json`
+  - `python scripts/resolve_chunk_profile.py /private/tmp/model_behavior_profile translate --model-stage-report /private/tmp/model_behavior_profile/model_stage_translate.json --json-out /private/tmp/model_behavior_profile/chunk_profile_translate.json`
+  - `python scripts/check_environment.py --dry-run-install --skip-api`
+  - `git diff --check`
+- Validation results:
+  - Syntax checks passed.
+  - Help output works for new and modified scripts.
+  - Default model profile resolves translation to `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` with `model_class=non_reasoning_instruct`.
+  - Stage check writes target model class into the report.
+  - Chunk profile resolver maps `non_reasoning_instruct` to `balanced_non_reasoning` and emits translation/QC defaults from `data/model_chunk_profiles.json`.
+  - Environment check detects `probe_chat_model_behavior.py` and `resolve_chunk_profile.py`; environment remains WARN with no FAIL.
+  - `git diff --check` passed.
+- Open questions:
+  - Real LM Studio/oMLX behavior probe thresholds may need tuning after testing on the user's 5090 laptop environment.
+  - Future improvement: let translation/QC scripts accept `--chunk-profile-json` directly instead of relying on agent command assembly.
+- Next:
+  - Commit, package, install, and push after user approval.

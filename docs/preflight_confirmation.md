@@ -59,7 +59,7 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 建议：已有 ASR 时先复用；否则 large-v3。
 
 4. 翻译模型
-建议：本机可用时 qwen3.6-27b，通过配置的 OpenAI-compatible /chat/completions。
+建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
 
 5. QC 模型
 建议：standard 可用较快模型，premium 用强模型。无论第几轮 QC，都必须调用配置的 QC 模型，不用 agent 自审替代。
@@ -124,6 +124,14 @@ python scripts/check_preflight.py "$PROJECT_ROOT" --stage qc
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY"
 python scripts/prepare_model_stage.py "$PROJECT_ROOT" qc --previous-stage translate --from-config --api-key "$TRANSLATE_API_KEY"
 ```
+
+如果翻译模型是 Qwen3.x、reasoning 类、未知模型或新接入模型，翻译前还要跑行为探测：
+
+```bash
+python scripts/prepare_model_stage.py "$PROJECT_ROOT" translate --previous-stage asr --from-config --api-key "$TRANSLATE_API_KEY" --probe-behavior --require-non-thinking --json-out "$PROJECT_ROOT/model_stage_translate.json"
+```
+
+探测发现 hidden thinking、空响应、JSON 不稳定或短请求也明显超时，就停止并建议换非 reasoning instruct 模型，不要只靠调 chunk 硬跑。
 
 如果翻译模型和 QC 模型不同，QC 前的阶段检查是硬门禁。HTTP 500 常见原因是上一阶段模型尚未释放显存/内存、目标 QC 模型加载失败或过大、本地后端不支持自动热切换、模型名不匹配，或服务需要手动重载/重启。此时停止并让用户释放/切换/加载模型后重试，不要改用 agent 自身模型做 QC。
 

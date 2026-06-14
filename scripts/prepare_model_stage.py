@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -150,10 +152,84 @@ def build_chat_probe(model: str) -> dict[str, Any]:
     }
 
 
+def behavior_probe_command(
+    *,
+    base_url: str,
+    model: str,
+    api_key: str,
+    timeout: float,
+    max_reasonable_sec: float,
+    json_out: str,
+) -> list[str]:
+    command = [
+        sys.executable,
+        str(Path(__file__).with_name("probe_chat_model_behavior.py")),
+        base_url,
+        model,
+        "--timeout",
+        str(timeout),
+        "--max-reasonable-sec",
+        str(max_reasonable_sec),
+        "--allow-fail",
+    ]
+    if api_key:
+        command.extend(["--api-key", api_key])
+    if json_out:
+        command.extend(["--json-out", json_out])
+    return command
+
+
+def read_behavior_report(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def behavior_probe_check(
+    *,
+    target: dict[str, Any],
+    api_key: str,
+    timeout: float,
+    max_reasonable_sec: float,
+    json_out: str,
+    require_non_thinking: bool,
+) -> tuple[Check, list[str], dict[str, Any]]:
+    command = behavior_probe_command(
+        base_url=str(target["base_url"]),
+        model=str(target["model"]),
+        api_key=api_key,
+        timeout=timeout,
+        max_reasonable_sec=max_reasonable_sec,
+        json_out=json_out,
+    )
+    completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+    report = read_behavior_report(Path(json_out)) if json_out else {}
+    if not report and completed.stdout.strip():
+        try:
+            report = json.loads(completed.stdout)
+        except Exception:
+            report = {}
+    verdict = str(report.get("verdict") or "probe_failed")
+    notes = [str(note) for note in report.get("notes", []) if str(note).strip()]
+    details = "\n".join(notes) if notes else completed.stdout.strip()[:1000]
+    if verdict == "ok_for_translation":
+        return Check("behavior_probe", "OK", "Model behavior probe passed for fast JSON-style subtitle work.", details), [], report
+    actions = [
+        "Use a non-reasoning instruct/translation model for bulk subtitle translation, or explicitly accept slower reasoning-model throughput.",
+        "If this is a Qwen3.x reasoning model under LM Studio, prefer Qwen2.5-32B-Instruct or another non-reasoning model for translation.",
+    ]
+    status = "FAIL" if require_non_thinking else "WARN"
+    return Check("behavior_probe", status, f"Model behavior probe verdict: {verdict}.", details), actions, report
+
+
 def print_report(report: dict[str, Any]) -> None:
     print(f"MODEL STAGE {report['stage']} {report['status']}")
     target = report["target"]
-    print(f"target: backend={target.get('backend')} base_url={target.get('base_url')} model={target.get('model')} interface={target.get('interface')}")
+    extra = f" model_class={target.get('model_class')}" if target.get("model_class") else ""
+    print(f"target: backend={target.get('backend')} base_url={target.get('base_url')} model={target.get('model')} interface={target.get('interface')}{extra}")
     previous = report.get("previous")
     if previous:
         print(
@@ -183,6 +259,10 @@ def main() -> int:
     parser.add_argument("--skip-api", action="store_true", help="Only resolve config; do not call /models or /chat/completions.")
     parser.add_argument("--probe-chat", action="store_true", help="Compatibility no-op; chat probe runs by default unless --skip-chat-probe is set.")
     parser.add_argument("--skip-chat-probe", action="store_true", help="Call /models only; skip the tiny chat completion probe.")
+    parser.add_argument("--probe-behavior", action="store_true", help="Run a short model behavior probe for hidden thinking, empty responses, and latency.")
+    parser.add_argument("--require-non-thinking", action="store_true", help="Fail if the behavior probe suggests hidden thinking, blank responses, or excessive latency.")
+    parser.add_argument("--max-behavior-sec", type=float, default=12.0, help="Warning/fail threshold per tiny behavior probe request.")
+    parser.add_argument("--behavior-json-out", default="", help="Optional behavior probe report path. Defaults next to --json-out when available.")
     parser.add_argument("--json-out", default="")
     parser.add_argument("--allow-fail", action="store_true", help="Write/print report but return zero even when checks fail.")
     args = parser.parse_args()
@@ -294,6 +374,29 @@ def main() -> int:
                 next_actions.append("Start or repair the configured chat service before running this stage.")
         else:
             checks.append(Check("chat_probe", "WARN", "Skipped /chat/completions probe by request."))
+
+        should_probe_behavior = bool(args.probe_behavior or target.get("behavior_probe_required"))
+        require_non_thinking = bool(args.require_non_thinking or target.get("require_non_thinking"))
+        if args.stage == "translate" and str(target.get("model_class", "")).startswith("reasoning"):
+            require_non_thinking = True
+        if should_probe_behavior:
+            behavior_out = args.behavior_json_out
+            if not behavior_out and args.json_out:
+                behavior_out = str(Path(args.json_out).with_suffix(".behavior.json"))
+            check, actions, behavior_report = behavior_probe_check(
+                target=target,
+                api_key=args.api_key,
+                timeout=args.timeout,
+                max_reasonable_sec=args.max_behavior_sec,
+                json_out=behavior_out,
+                require_non_thinking=require_non_thinking,
+            )
+            checks.append(check)
+            next_actions.extend(actions)
+            target["behavior_probe"] = {
+                "verdict": behavior_report.get("verdict", ""),
+                "report_path": behavior_out,
+            }
     elif not args.skip_api:
         checks.append(Check("api_probe", "FAIL", "Skipped live API checks because stage config is incomplete."))
 

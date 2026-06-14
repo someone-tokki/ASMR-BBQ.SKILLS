@@ -87,6 +87,8 @@ def build_command(args: argparse.Namespace, input_srt: Path, output_srt: Path, p
         ("context_before", "--context-before"),
         ("context_after", "--context-after"),
         ("timeout", "--timeout"),
+        ("model_class", "--model-class"),
+        ("reasoning_token_budget", "--reasoning-token-budget"),
         ("sleep", "--sleep"),
     ]
     for attr, flag in optional_pairs:
@@ -146,6 +148,8 @@ def main() -> int:
     parser.add_argument("--context-before", default=None)
     parser.add_argument("--context-after", default=None)
     parser.add_argument("--timeout", default=None)
+    parser.add_argument("--model-class", default=None)
+    parser.add_argument("--reasoning-token-budget", default=None)
     parser.add_argument("--sleep", default=None)
     parser.add_argument("--workers", type=int, default=1, help="Translate multiple files concurrently. Keep 1 for most local 27B runs.")
     parser.add_argument("--profile", default="", help="Write batch translation timing profile JSON.")

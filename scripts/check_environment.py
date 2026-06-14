@@ -55,6 +55,8 @@ REQUIRED_SCRIPTS = [
     "manage_project_config.py",
     "manage_model_profile.py",
     "prepare_model_stage.py",
+    "probe_chat_model_behavior.py",
+    "resolve_chunk_profile.py",
     "check_environment.py",
 ]
 CORE_IMPORTS = [

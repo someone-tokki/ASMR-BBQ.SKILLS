@@ -11,7 +11,7 @@ This project should keep subtitle checks, config records, and reports portable a
 - ASR optimizations such as VAD, overlap/stride, segment-level resume, and previous-transcript prompts are backend capabilities, not mandatory assumptions. Use them when the selected ASR tool supports them; otherwise record that they were not used. Do not install or swap ASR engines solely to obtain these options without user approval.
 - Windows and WSL default to `ollama` for translation and QC when available.
 - If `ollama` is not available, the agent should fall back to another available OpenAI-compatible backend, such as oMLX, LM Studio, a local server, or a user-approved cloud endpoint.
-- macOS can continue using oMLX or another OpenAI-compatible local API by default. On this user's machine, translation/QC should prefer `qwen3.6-27b` when that model is available.
+- macOS can continue using oMLX or another OpenAI-compatible local API by default. For bulk subtitle translation, prefer a non-reasoning instruct/chat model such as `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` or another verified fast Japanese/Chinese model. Qwen3.x reasoning models must pass behavior probing before production use.
 - `translate_backend=auto` means the environment check recommends the backend; it does not start services by itself.
 - If `translate_backend` is explicitly set to `ollama`, missing Ollama is a blocker.
 - If `translate_backend` is explicitly set to another backend, that explicit project choice overrides the platform default.
@@ -29,7 +29,7 @@ This project should keep subtitle checks, config records, and reports portable a
 
 - Prefer `--translate-backend auto` in new `project_config.json` records unless the user has already chosen a concrete backend.
 - Prefer `--asr-backend auto` and `--asr-model "$ASR_MODEL"` in new `project_config.json` records unless the user has already chosen a concrete ASR backend.
-- Record ASR model and translation/QC model separately. Whisper/`large-v3` belongs to ASR; `qwen3.6-27b` is this user's preferred translation/QC chat model when available.
+- Record ASR model and translation/QC model separately. Whisper/`large-v3` belongs to ASR; bulk translation should prefer a non-reasoning instruct/chat model. Reasoning models may be used only after behavior probing confirms no hidden-thinking latency, blank response, or JSON instability.
 - Use `$PROJECT_ROOT/model_profile.json` for user-editable stage model preferences when ASR, translation, and QC should use different models, base URLs, or backends. Resolve it with `scripts/manage_model_profile.py resolve "$PROJECT_ROOT" <stage> --from-config` before each stage.
 - `model_profile.json` is not a secrets file and does not start services, install packages, unload models, or download models. It only records preferences for the agent to apply.
 - Stage model choices are binding for workflow steps. Translation, mandatory QC, and optional QC refinement must call the resolved local/configured `/chat/completions` endpoint through the workflow scripts. If the configured service is missing, it is a setup/backend problem; it is not permission for the agent to use its own model as a hidden replacement QC model.

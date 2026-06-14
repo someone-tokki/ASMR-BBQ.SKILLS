@@ -160,6 +160,7 @@ def translate_chunk(
     api_key: str,
     model: str,
     timeout: int,
+    reasoning_token_budget: int,
 ) -> tuple[dict[int, str], dict[int, list[str]]]:
     user_payload = json.dumps(
         {
@@ -189,7 +190,7 @@ def translate_chunk(
             },
         ],
         "temperature": 0.2,
-        "max_tokens": max(1200, sum(len(item["text"]) for item in items) * 4 + 600),
+        "max_tokens": max(1200, reasoning_token_budget, sum(len(item["text"]) for item in items) * 4 + 600),
         "chat_template_kwargs": {"enable_thinking": False},
     }
     data = post_json(url, api_key, payload, timeout)
@@ -340,7 +341,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("input_srt")
     parser.add_argument("output_srt")
-    parser.add_argument("--model", default="Qwen3.6-27B-MLX-VL-oQ6")
+    parser.add_argument("--model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--api-key", required=True)
     parser.add_argument("--preset", choices=sorted(PRESETS), default="fast")
@@ -360,6 +361,8 @@ def main() -> int:
     parser.add_argument("--profile", default="", help="Write per-file translation timing profile JSON.")
     parser.add_argument("--plan-only", action="store_true", help="Build translation chunk manifest without calling the model.")
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--model-class", default="", help="Optional model class hint, e.g. non_reasoning_instruct or reasoning.")
+    parser.add_argument("--reasoning-token-budget", type=int, default=0, help="Minimum max_tokens budget for reasoning/hidden-thinking models. Prefer switching models instead of raising this for bulk translation.")
     parser.add_argument("--sleep", type=float, default=0.0)
     parser.add_argument("--progress-position", type=int, default=0)
     add_preflight_args(parser)
@@ -492,9 +495,10 @@ def main() -> int:
                         context_after,
                         url=url,
                         api_key=args.api_key,
-                        model=args.model,
-                        timeout=args.timeout,
-                    )
+                model=args.model,
+                timeout=args.timeout,
+                reasoning_token_budget=args.reasoning_token_budget,
+            )
                     translations.update(translated)
                     flags.update(chunk_flags)
                     break

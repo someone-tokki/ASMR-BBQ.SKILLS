@@ -7,8 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-
-DEFAULT_PROJECT_LESSONS = Path("references/project-lessons.md")
+from resolve_learning_paths import build_report as build_learning_paths_report
 
 
 def read_json_if_exists(path: Path | None) -> Any:
@@ -68,14 +67,14 @@ def report_line(label: str, path: Path | None, count: int | None = None) -> str:
     return f"  - {label}: `{path.as_posix()}` ({status})"
 
 
-def project_heading_exists(project_lessons: Path, work_id: str) -> bool:
-    if not project_lessons.exists():
+def work_heading_exists(work_record: Path, work_id: str) -> bool:
+    if not work_record.exists():
         return False
-    text = project_lessons.read_text(encoding="utf-8")
+    text = work_record.read_text(encoding="utf-8")
     return f"## {work_id}" in text
 
 
-def build_project_entry(config: dict[str, Any], *, today: str) -> str:
+def build_work_record_entry(config: dict[str, Any], *, today: str) -> str:
     work_id = str(config.get("work_id") or "UNKNOWN")
     project_type = str(config.get("project_type") or "unknown")
     paths = config.get("paths", {})
@@ -123,57 +122,77 @@ def build_project_entry(config: dict[str, Any], *, today: str) -> str:
         "  - `references/style.md`：TODO / 无",
         "  - `references/terms.md`：TODO / 无",
         "  - `references/risk-notes.md`：TODO / 无",
-        "  - `data/subtitle_risk_patterns.json`：TODO / 无",
+        "  - `data/subtitle_risk_patterns.local.json`：TODO / 无",
         "  - `references/pending.md`：TODO / 无",
         "",
     ]
     return "\n".join(lines)
 
 
-def build_draft(config: dict[str, Any], *, today: str, project_lessons: Path) -> str:
-    work_id = str(config.get("work_id") or "UNKNOWN")
-    exists = project_heading_exists(project_lessons, work_id)
-    entry = build_project_entry(config, today=today)
-    return (
-        f"# Learning Library Update Draft - {work_id}\n\n"
-        f"- Project lesson already exists: {'yes' if exists else 'no'}\n"
-        "- Use this draft after final QC/checks. Replace TODO items with evidence-backed lessons.\n"
-        "- Add reusable style, terminology, and easy-mistake notes to their shared reference files; keep uncertain items in pending.\n\n"
-        "## Project Lesson Entry\n\n"
-        f"{entry}\n"
-        "## Shared Reference Checklist\n\n"
-        "- `references/style.md`: ASMR pacing, tone, readable subtitle style, reusable phrasing.\n"
-        "- `references/terms.md`: stable terms with source, recommended translation, rejected translation, context.\n"
-        "- `references/risk-notes.md`: confirmed easy mistakes, ASR misrecognitions, model mistranslations, false positives.\n"
-        "- `data/subtitle_risk_patterns.json`: mechanically scannable confirmed risks only.\n"
-        "- `references/pending.md`: no-script, not-listened, or evidence-insufficient items.\n"
-    )
+def append_block(path: Path, heading: str, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    if heading in existing:
+        return
+    separator = "" if not existing else ("" if existing.endswith("\n\n") else "\n")
+    path.write_text(existing + separator + body.rstrip() + "\n", encoding="utf-8")
 
 
-def append_project_lesson(project_lessons: Path, entry: str, work_id: str) -> bool:
-    if project_heading_exists(project_lessons, work_id):
-        return False
-    project_lessons.parent.mkdir(parents=True, exist_ok=True)
-    existing = project_lessons.read_text(encoding="utf-8") if project_lessons.exists() else "# 作品经验记录\n"
-    separator = "\n" if existing.endswith("\n") else "\n\n"
-    project_lessons.write_text(existing + separator + entry.rstrip() + "\n", encoding="utf-8")
-    return True
+def append_user_reference(path: Path, title: str, entry: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text(encoding="utf-8") if path.exists() else f"# {title}\n\n"
+    if entry.splitlines()[0] in existing:
+        return
+    separator = "" if existing.endswith("\n\n") else "\n"
+    path.write_text(existing + separator + entry.rstrip() + "\n", encoding="utf-8")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create a learning-library update draft for an ASMR subtitle project.")
+    parser = argparse.ArgumentParser(description="Create a learning-library update draft for an ASMR subtitle work record.")
     parser.add_argument("project_root", help="Project output root or project_config.json.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Entry date. Defaults to today.")
     parser.add_argument("--out", help="Write Markdown draft to this path. Defaults to stdout.")
-    parser.add_argument("--append-project-lesson", action="store_true", help="Append the project lesson entry if it does not exist.")
-    parser.add_argument("--project-lessons", default=DEFAULT_PROJECT_LESSONS.as_posix(), help="Path to project lessons reference.")
+    parser.add_argument("--append-work-record", action="store_true", help="Append the work record entry if it does not exist.")
+    parser.add_argument("--promote-confirmed", action="store_true", help="Append confirmed items to the user long-term learning library.")
+    parser.add_argument("--learning-paths", default="", help="Optional JSON path from resolve_learning_paths.py.")
+    parser.add_argument("--work-record", default="", help="Override work_record.md path.")
+    parser.add_argument("--user-learning-dir", default="", help="Override user learning directory.")
     args = parser.parse_args()
 
     config = read_config(Path(args.project_root))
-    project_lessons = Path(args.project_lessons)
-    draft = build_draft(config, today=args.date, project_lessons=project_lessons)
-    entry = build_project_entry(config, today=args.date)
     work_id = str(config.get("work_id") or Path(args.project_root).name)
+    learning_paths = None
+    if args.learning_paths:
+        path = Path(args.learning_paths)
+        if path.exists():
+            learning_paths = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        learning_paths = build_learning_paths_report(Path(args.project_root), codex_home=Path.home() / ".codex", create=False)
+
+    work_record = Path(args.work_record) if args.work_record else Path((learning_paths or {}).get("work_record_dir", Path(args.project_root) / "learning")) / "work_record.md"
+    user_learning_dir = Path(args.user_learning_dir) if args.user_learning_dir else Path((learning_paths or {}).get("user_learning_dir", Path.home() / ".codex" / "asmr-subtitle-translator" / "learning"))
+    user_style = user_learning_dir / "references/style.md"
+    user_terms = user_learning_dir / "references/terms.md"
+    user_risk = user_learning_dir / "references/risk-notes.md"
+    user_pending = user_learning_dir / "references/pending.md"
+    user_work_index = user_learning_dir / "references/work-index.md"
+    user_risk_patterns = user_learning_dir / "data/subtitle_risk_patterns.local.json"
+
+    entry = build_work_record_entry(config, today=args.date)
+    draft = (
+        f"# Learning Update Draft - {work_id}\n\n"
+        "- Write the work record first; then promote only confirmed items to the user learning library.\n"
+        "- This draft intentionally targets a short-lived work record, not the skill package itself.\n\n"
+        "## Work Record Entry\n\n"
+        f"{entry}\n"
+        "## User Library Targets\n\n"
+        f"- style: `{user_style.as_posix()}`\n"
+        f"- terms: `{user_terms.as_posix()}`\n"
+        f"- risk-notes: `{user_risk.as_posix()}`\n"
+        f"- pending: `{user_pending.as_posix()}`\n"
+        f"- work-index: `{user_work_index.as_posix()}`\n"
+        f"- risk-patterns: `{user_risk_patterns.as_posix()}`\n"
+    )
 
     if args.out:
         out = Path(args.out)
@@ -182,9 +201,12 @@ def main() -> int:
     else:
         print(draft, end="")
 
-    if args.append_project_lesson:
-        appended = append_project_lesson(project_lessons, entry, work_id)
-        print(f"project_lesson_appended={str(appended).lower()}")
+    if args.append_work_record:
+        append_block(work_record, f"## {work_id}", entry)
+        print(f"work_record_appended={str(True).lower()}")
+
+    if args.promote_confirmed:
+        append_user_reference(user_work_index, "ASMR Work Index", f"- {work_id}: {entry.splitlines()[0]}")
     return 0
 
 

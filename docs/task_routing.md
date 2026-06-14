@@ -57,7 +57,7 @@
 
 - ASR/转文字任务：只负责从音频生成日文 `.ja.asr.srt`/JSON，不负责最终翻译判断。ASR 必须使用 Whisper 类模型和 `/audio/transcriptions`，或使用 Python Whisper 脚本。
 - ASR 默认顺序：已有 `.ja.asr.srt` 先复用；新跑时优先探测 oMLX/LM Studio/Ollama 等本地平台 API 是否支持 `/audio/transcriptions`；然后使用配置的 `local-asr-api`；然后使用 Python Whisper；最后才走受控 setup。不要把只支持 chat 的翻译/QC 端口当成 ASR 入口。
-- 翻译/QC 默认走 oMLX/Ollama/LM Studio 等本地 OpenAI-compatible chat 接口。本机默认推荐 `qwen3.6-27b`；如果服务里的实际 model id 不同，以 `/models` 或用户配置为准。
+- 翻译/QC 默认走 oMLX/Ollama/LM Studio 等本地 OpenAI-compatible chat 接口。本机默认推荐 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M`；如果服务里的实际 model id 不同，以 `/models` 或用户配置为准。
 - 用户或项目可以用 `$PROJECT_ROOT/model_profile.json` 为 ASR、翻译、QC 分别选择 backend/base URL/model。每个阶段开始前用 `scripts/manage_model_profile.py resolve "$PROJECT_ROOT" <asr|translate|qc> --from-config` 解析有效选择；不要把上一阶段模型自动带到下一阶段。
 - 阶段切换时必须确认 `backend`、`base_url`、`model`、`interface`：ASR 用 Whisper + `/audio/transcriptions`，翻译/QC 用 chat 模型 + `/chat/completions`。如果本地平台不能同时常驻 ASR 与翻译模型，先释放/卸载/切换模型，再进入下一阶段。
 - 本地模型调用纪律：凡是流程要求翻译、第一轮强制模型 QC、第二轮或后续追加 QC 精修，agent 必须调用解析到的本地/项目模型端口和脚本。agent 自身模型不等于翻译模型或 QC 模型，不能替代 `scripts/qc_srt_omlx.py` 的模型 QC。配置的本地 QC 服务不可用时，应停下报告或请求用户切换 backend/model，而不是悄悄自审。

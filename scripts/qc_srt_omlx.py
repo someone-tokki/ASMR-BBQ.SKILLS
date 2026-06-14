@@ -75,6 +75,7 @@ def qc_chunk(
     timeout: int,
     context: str,
     qc_pass: str,
+    reasoning_token_budget: int,
 ) -> list[dict]:
     context_line = f"本作上下文：{context}\n" if context else ""
     pass_line = (
@@ -113,7 +114,7 @@ def qc_chunk(
             },
         ],
         "temperature": 0.1,
-        "max_tokens": max(1200, sum(len(x["ja"]) + len(x["zh"]) for x in items) * 2 + 800),
+        "max_tokens": max(1200, reasoning_token_budget, sum(len(x["ja"]) + len(x["zh"]) for x in items) * 2 + 800),
         "chat_template_kwargs": {"enable_thinking": False},
     }
     data = post_json(url, api_key, payload, timeout)
@@ -366,7 +367,7 @@ def main() -> int:
     parser.add_argument("--zh-dir", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--api-key", required=True)
-    parser.add_argument("--model", default="Qwen3.6-27B-MLX-VL-oQ6")
+    parser.add_argument("--model", default="Qwen2.5-32B-Instruct-GGUF-Q4_K_M")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--chunk-size", type=int, default=18, help="Fixed chunk size, or target chunk size when --chunk-mode dynamic.")
     parser.add_argument("--chunk-mode", choices=["dynamic", "fixed"], default="dynamic")
@@ -385,6 +386,8 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="Rerun all QC chunks even if cached chunks exist.")
     parser.add_argument("--plan-only", action="store_true", help="Build chunk manifest without calling the model.")
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--model-class", default="", help="Optional model class hint, e.g. non_reasoning_instruct or reasoning.")
+    parser.add_argument("--reasoning-token-budget", type=int, default=0, help="Minimum max_tokens budget for reasoning/hidden-thinking models. Prefer non-reasoning models for light/full QC.")
     parser.add_argument("--context", default="", help="Brief work-specific context and known ASR risks for QC.")
     parser.add_argument("--context-file", default="", help="Optional Markdown/text context profile to include in QC prompts.")
     add_preflight_args(parser)
@@ -529,6 +532,7 @@ def main() -> int:
                                     timeout=args.timeout,
                                     context=context,
                                     qc_pass=pass_name,
+                                    reasoning_token_budget=args.reasoning_token_budget,
                                 )
                                 issues.extend(chunk_issues)
                                 write_json_atomic(

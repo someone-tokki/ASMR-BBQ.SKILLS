@@ -18,8 +18,8 @@ DEFAULT_PROFILE = {
         "local_chat_base_url": "http://127.0.0.1:8000/v1",
         "asr_base_url": "",
         "asr_model": "large-v3",
-        "translate_model": "qwen3.6-27b",
-        "qc_model": "qwen3.6-27b",
+        "translate_model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
+        "qc_model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
     },
     "stages": {
         "asr": {
@@ -32,16 +32,22 @@ DEFAULT_PROFILE = {
         "translate": {
             "backend": "auto",
             "base_url": "http://127.0.0.1:8000/v1",
-            "model": "qwen3.6-27b",
+            "model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
             "interface": "/chat/completions",
-            "notes": "Use a chat model suitable for Japanese-to-Chinese ASMR translation.",
+            "notes": "Use a non-reasoning instruct/chat model suitable for Japanese-to-Chinese ASMR translation. Probe Qwen3.x reasoning models before bulk use.",
+            "model_class": "non_reasoning_instruct",
+            "behavior_probe_required": True,
+            "require_non_thinking": False,
         },
         "qc": {
             "backend": "auto",
             "base_url": "http://127.0.0.1:8000/v1",
-            "model": "qwen3.6-27b",
+            "model": "Qwen2.5-32B-Instruct-GGUF-Q4_K_M",
             "interface": "/chat/completions",
-            "notes": "Can be a faster chat model for light QC or a stronger model for deep QC.",
+            "notes": "Can be a faster non-reasoning model for light QC or a stronger verified model for deep QC.",
+            "model_class": "non_reasoning_instruct",
+            "behavior_probe_required": True,
+            "require_non_thinking": False,
         },
     },
     "stage_overrides": [],
@@ -106,12 +112,24 @@ def merge_project_config(profile: dict[str, Any], config: dict[str, Any]) -> dic
         stages.setdefault("qc", {})["base_url"] = models.get("translate_base_url")
     if models.get("translate_model"):
         stages.setdefault("translate", {})["model"] = models.get("translate_model")
+    if models.get("translate_model_class"):
+        stages.setdefault("translate", {})["model_class"] = models.get("translate_model_class")
+    if models.get("translate_behavior_probe_required") is not None:
+        stages.setdefault("translate", {})["behavior_probe_required"] = bool(models.get("translate_behavior_probe_required"))
+    if models.get("translate_require_non_thinking") is not None:
+        stages.setdefault("translate", {})["require_non_thinking"] = bool(models.get("translate_require_non_thinking"))
     if models.get("qc_base_url"):
         stages.setdefault("qc", {})["base_url"] = models.get("qc_base_url")
     if models.get("qc_backend"):
         stages.setdefault("qc", {})["backend"] = models.get("qc_backend")
     if models.get("qc_model"):
         stages.setdefault("qc", {})["model"] = models.get("qc_model")
+    if models.get("qc_model_class"):
+        stages.setdefault("qc", {})["model_class"] = models.get("qc_model_class")
+    if models.get("qc_behavior_probe_required") is not None:
+        stages.setdefault("qc", {})["behavior_probe_required"] = bool(models.get("qc_behavior_probe_required"))
+    if models.get("qc_require_non_thinking") is not None:
+        stages.setdefault("qc", {})["require_non_thinking"] = bool(models.get("qc_require_non_thinking"))
     return profile
 
 
@@ -157,6 +175,9 @@ def resolve_stage(profile: dict[str, Any], stage: str) -> dict[str, Any]:
         "model": str(data.get("model") or ""),
         "interface": str(data.get("interface") or ""),
         "notes": str(data.get("notes") or ""),
+        "model_class": str(data.get("model_class") or "reasoning_or_unknown"),
+        "behavior_probe_required": bool(data.get("behavior_probe_required", True)),
+        "require_non_thinking": bool(data.get("require_non_thinking", False)),
     }
     if stage == "asr":
         result["model"] = result["model"] or str(defaults.get("asr_model") or "large-v3")
@@ -202,6 +223,9 @@ def main() -> int:
     set_stage.add_argument("--model")
     set_stage.add_argument("--interface")
     set_stage.add_argument("--notes")
+    set_stage.add_argument("--model-class")
+    set_stage.add_argument("--behavior-probe-required", dest="behavior_probe_required", action=argparse.BooleanOptionalAction, default=None)
+    set_stage.add_argument("--require-non-thinking", dest="require_non_thinking", action=argparse.BooleanOptionalAction, default=None)
 
     resolve = subparsers.add_parser("resolve", help="Resolve effective backend/base_url/model for a stage.")
     resolve.add_argument("project_root")
@@ -255,10 +279,15 @@ def main() -> int:
             ("model", "model"),
             ("interface", "interface"),
             ("notes", "notes"),
+            ("model_class", "model_class"),
         ]:
             value = getattr(args, arg_name)
             if value is not None:
                 stage_data[key] = value
+        if args.behavior_probe_required is not None:
+            stage_data["behavior_probe_required"] = args.behavior_probe_required
+        if args.require_non_thinking is not None:
+            stage_data["require_non_thinking"] = args.require_non_thinking
         profile["updated_at"] = now_utc()
         write_json(path, profile)
         print(path.as_posix())

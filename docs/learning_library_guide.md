@@ -4,14 +4,11 @@
 
 ## 学习库是什么
 
-学习库由几类文件组成：
+学习库分成三层：
 
-- `references/project-lessons.md`：项目经验记录。每完成一个作品都要写一条，哪怕没有新增可泛化规则。
-- `references/style.md`：已确认可复用的风格规则，例如口吻、称呼习惯、拟声压缩、ASMR 慢阅读和字幕节奏。
-- `references/terms.md`：术语库，例如角色称呼、固定表达、成人术语、社团或系列常用译法。
-- `references/risk-notes.md`：面向人读的易错词/风险说明，包括 ASR 同音错、模型常见误译、误报边界和上下文判断方法。
-- `data/subtitle_risk_patterns.json`：面向脚本扫描的风险规则，只放可机械匹配的确认风险。
-- `references/pending.md`：待验证内容。证据不足、不确定、只听感怀疑或只出现一次的经验先进这里。
+- Skill 内置基础库：`references/` 和 `data/subtitle_risk_patterns.json`。这是包内默认规则，只读，不作为长期个人记忆。
+- 用户长期学习库：`${CODEX_HOME:-~/.codex}/asmr-subtitle-translator/learning/`。这里保存跨作品可复用的确认经验，不应被 Git pull 或重新安装 Skill 覆盖。
+- 单作品工作记录：`$PROJECT_ROOT/learning/`。这里只保存这一个作品的回收记录、候选和中转草稿，作品结束后可以随项目一起归档或移走。
 
 ## 什么时候更新
 
@@ -26,7 +23,7 @@
 - agent 接受、拒绝、推迟的 QC 建议
 - 台本复核记录、抽听记录、DLsite 元信息带来的低强度上下文
 
-如果本轮只是只读扫描或中途暂停，可以只写 `pending.md` 或项目 notes；不要把未完成判断写成全局规则。
+如果本轮只是只读扫描或中途暂停，可以只写 work record 或 `pending.md`；不要把未完成判断写成全局规则。
 
 ## 写入分流
 
@@ -34,21 +31,21 @@
 
 | 经验类型 | 写入位置 | 例子 |
 | --- | --- | --- |
-| 只对本作品成立 | `references/project-lessons.md` | 本作姐姐角色固定称呼男主为“你这孩子” |
-| 可复用风格 | `references/style.md` | 长段亲吻声可压缩为可读提示，不逐音节刷屏 |
-| 稳定术语 | `references/terms.md` | `オナサポ` 译为“自慰辅助/自慰陪伴”，不混同 `フェラ` |
-| 人读易错说明 | `references/risk-notes.md` | `そうろう` 易被 ASR 识别成 `僧侶/騒動` |
-| 脚本可扫风险 | `data/subtitle_risk_patterns.json` | 正则或固定词命中 `僧侶` 时提示检查是否为 `早漏` |
-| 证据不足 | `references/pending.md` | 无台本且未抽听，只怀疑某词是 ASR 幻觉 |
+| 只对本作品成立 | `$PROJECT_ROOT/learning/work_record.md` | 本作姐姐角色固定称呼男主为“你这孩子” |
+| 可复用风格 | 用户长期库 `references/style.md` | 长段亲吻声可压缩为可读提示，不逐音节刷屏 |
+| 稳定术语 | 用户长期库 `references/terms.md` | `オナサポ` 译为“自慰辅助/自慰陪伴”，不混同 `フェラ` |
+| 人读易错说明 | 用户长期库 `references/risk-notes.md` | `そうろう` 易被 ASR 识别成 `僧侶/騒動` |
+| 脚本可扫风险 | 用户长期库 `data/subtitle_risk_patterns.local.json` | 正则或固定词命中 `僧侶` 时提示检查是否为 `早漏` |
+| 证据不足 | 用户长期库 `references/pending.md` 或 `$PROJECT_ROOT/learning/pending.md` | 无台本且未抽听，只怀疑某词是 ASR 幻觉 |
 
-同一个发现可以写入多个地方。例如一个确认的 ASR 错词，解释写进 `risk-notes.md`，机械扫描词写进 `subtitle_risk_patterns.json`，项目发生记录写进 `project-lessons.md`。
+同一个发现可以写入多个地方。例如一个确认的 ASR 错词，解释写进用户长期 `risk-notes.md`，机械扫描词写进用户长期 `subtitle_risk_patterns.local.json`，本次工作记录写进 `work_record.md`。
 
 ## 证据等级
 
 写入前按证据强度分类：
 
 - `confirmed`：台本、日文 ASR、相邻上下文、用户反馈或抽听能支持，可以进入共享 reference。
-- `project-only`：本作成立，但不应泛化，可以进入 `project-lessons.md`。
+- `work-only`：本作成立，但不应泛化，只进入 work record。
 - `pending`：证据不足，进入 `pending.md`。
 - `false-positive`：风险扫描或 QC 命中过但确认是误报，应写明为什么误报，必要时收窄规则。
 
@@ -60,9 +57,9 @@
 - 单个角色或单部作品独有的称呼习惯。
 - 风险扫描命中但未确认的候选词。
 
-## 项目经验记录要求
+## 工作记录要求
 
-每个作品都必须在 `references/project-lessons.md` 写一条项目记录。建议包含：
+每个作品都必须在 `$PROJECT_ROOT/learning/work_record.md` 写一条工作记录。建议包含：
 
 - 日期和作品 ID。
 - 有无台本。
@@ -70,14 +67,18 @@
 - ASR、翻译、QC 使用的 backend/model，仅作为项目记录，不作为后续硬性要求。
 - 主要 QC 发现。
 - 可复用经验。
-- 已同步到 `style.md` / `terms.md` / `risk-notes.md` / `subtitle_risk_patterns.json` 的条目。
-- 仍留在 `pending.md` 的问题。
+- 已同步到用户长期库 `style.md` / `terms.md` / `risk-notes.md` / `subtitle_risk_patterns.local.json` 的条目。
+- 仍留在 `pending.md` 或 work record 里的问题。
 
-即使没有新增全局规则，也要写“无新增可泛化规则”。这能避免后续 agent 误以为该项目还没做学习回收。
+即使没有新增全局规则，也要写“无新增可泛化规则”。这能避免后续 agent 误以为该作品还没做学习回收。
+
+## 用户长期库写入要求
+
+用户长期库只接收 confirmed 条目。工作记录中的内容只有在确认可复用后，才会被晋升到 `${CODEX_HOME:-~/.codex}/asmr-subtitle-translator/learning/`。
 
 ## 风格库写入原则
 
-写入 `references/style.md` 的内容应当是跨作品可复用的字幕风格原则，而不是某个角色的私人口癖。
+写入用户长期库 `references/style.md` 的内容应当是跨作品可复用的字幕风格原则，而不是某个角色的私人口癖。
 
 适合写入：
 
@@ -93,7 +94,7 @@
 
 ## 术语库写入原则
 
-写入 `references/terms.md` 的内容应包含来源、推荐译法、不推荐译法和适用条件。
+写入用户长期库 `references/terms.md` 的内容应包含来源、推荐译法、不推荐译法和适用条件。
 
 适合写入：
 
@@ -108,7 +109,7 @@
 
 ## 易错词/风险库写入原则
 
-`references/risk-notes.md` 是给人读的说明，重点写“为什么危险、怎么确认、什么时候可能是误报”。`data/subtitle_risk_patterns.json` 是给脚本扫的规则，只写可机械匹配的确认风险。
+用户长期库 `references/risk-notes.md` 是给人读的说明，重点写“为什么危险、怎么确认、什么时候可能是误报”。用户长期库 `data/subtitle_risk_patterns.local.json` 是给脚本扫的规则，只写可机械匹配的确认风险。
 
 适合写入 `risk-notes.md`：
 
@@ -117,7 +118,7 @@
 - 成人术语容易混淆的上下文。
 - 风险扫描误报边界。
 
-适合写入 `subtitle_risk_patterns.json`：
+适合写入 `subtitle_risk_patterns.local.json`：
 
 - 固定错词。
 - 明确可匹配的残留日文。
@@ -127,7 +128,7 @@
 
 ## Pending 的用途
 
-`references/pending.md` 不是垃圾箱，而是“需要下次验证的假设”。条目应写清：
+用户长期库 `references/pending.md` 和项目级 `$PROJECT_ROOT/learning/pending.md` 不是垃圾箱，而是“需要下次验证的假设”。条目应写清：
 
 - 来源作品和日期。
 - 怀疑点。
@@ -169,11 +170,11 @@
 每次完成作品前，agent 应按这个顺序处理学习库：
 
 1. 读取最终字幕和报告：`qc_report.json`、`risk_report.json`、`readability_report.json`、必要时追加 QC refinement 报告。
-2. 运行或参考 `scripts/update_learning_library.py` 生成项目经验草稿。
-3. 写入 `references/project-lessons.md`，确保本作品有记录。
-4. 从 confirmed 经验中提炼可复用内容，分别写入 `style.md`、`terms.md`、`risk-notes.md`。
-5. 只有当风险可机械扫描且足够明确时，更新 `data/subtitle_risk_patterns.json`。
-6. 把证据不足的内容写入 `pending.md`。
+2. 运行或参考 `scripts/update_learning_library.py` 生成 work record 草稿。
+3. 写入 `$PROJECT_ROOT/learning/work_record.md`，确保本作品有记录。
+4. 从 confirmed 经验中提炼可复用内容，分别写入用户长期库的 `style.md`、`terms.md`、`risk-notes.md`。
+5. 只有当风险可机械扫描且足够明确时，更新用户长期库中的 `subtitle_risk_patterns.local.json`。
+6. 把证据不足的内容写入 work record 或用户长期 `pending.md`。
 7. 做一次学习自检，确认没有把未证实内容写成全局规则。
 8. 在最终回复中说明本次学习库更新了哪些文件，以及哪些内容仍待验证。
 
@@ -181,8 +182,8 @@
 
 agent 在交付前必须给自己做一轮 learning self-check。自检不是额外模型调用，而是基于本轮证据的整理：
 
-- 本作品是否已经写入 `references/project-lessons.md`。
-- 是否有 confirmed 经验可以进入 `style.md`、`terms.md`、`risk-notes.md` 或 `subtitle_risk_patterns.json`。
+- 本作品是否已经写入 `$PROJECT_ROOT/learning/work_record.md`。
+- 是否有 confirmed 经验可以进入用户长期库的 `style.md`、`terms.md`、`risk-notes.md` 或 `subtitle_risk_patterns.local.json`。
 - 是否有只适用于本作品的 `project-only` 经验，且没有被误写成全局规则。
 - 是否有证据不足的 `pending` 条目。
 - 是否有 QC 或风险扫描误报需要记录为 `false-positive`。
@@ -193,8 +194,8 @@ agent 在交付前必须给自己做一轮 learning self-check。自检不是额
 
 ```text
 学习库更新：
-- project-lessons：已记录 RJxxxx，本次范围/模型/QC 发现/项目级经验。
-- style/terms/risk-notes：新增或无新增，并说明原因。
+- work record：已记录 RJxxxx，本次范围/模型/QC 发现/项目级经验。
+- user style/terms/risk-notes：新增或无新增，并说明原因。
 - risk patterns：新增或无新增，并说明是否有机械扫描价值。
 - pending：新增待验证项或无。
 - 未全局化内容：列出原因，例如只适用于本作角色设定。
