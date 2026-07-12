@@ -9,7 +9,7 @@
 - `SOURCE_PROJECT_DIR` 默认就是源 ASMR 作品目录，即识别到的 RJ 父目录或音频源上级作品目录；不再默认创建 `generated_subtitles/<WORK_ID>`。除非用户明确指定 `--output-root` 或 `--project-root`，不要把项目输出另放到工作区。
 - `PROJECT_ROOT` 默认是 `$SOURCE_PROJECT_DIR/subtitle_project/`，用于工程文件和中间文件；最终 `.zh.vtt/.zh.srt` 放在 `$FINAL_SUBTITLE_DIR`，默认是 `$SOURCE_PROJECT_DIR/subtitles/`。
 - 若音频包里同时存在有 SE/无 SE 版本，用户指定音源优先；未指定时，用 `scripts/select_asr_audio_source.py` 按轨道匹配。只有能和普通音频对齐且 `requires_review=false` 的无 SE 文件才作为默认 ASR 输入；同轨道无 SE 同时有 MP3/WAV 时默认选 MP3，除非报告提示疑似试听、裁剪、占位或映射不清。
-- 翻译范围必须在 Preflight 阶段确认。先用 `scripts/scan_audio_scope.py` 列出源作品文件夹下发现的音频文件夹，再询问用户本轮要翻译哪些文件夹或具体文件。试听、DLC、EX/free talk、bonus、特典等不能被默认歧视或跳过；只有用户确认 `all` 时才全量处理，用户选择部分文件夹/文件时，把这个 scope 写入 `run_profile.json`。
+- 翻译范围必须在 Preflight 阶段确认。先完成 `scripts/scan_audio_scope.py`、`scripts/select_asr_audio_source.py`、既有字幕盘点和只读环境检测；不要在扫描后立刻打断用户询问范围。试听、DLC、EX/free talk、bonus、特典等不能被默认歧视或跳过。将文件夹清单、候选音源和环境结论汇入一张一次性确认单，与 ASR/翻译/QC 模型、输出格式和 WAV-only 偏好一起询问；只有用户确认 `all` 时才全量处理，用户选择部分文件夹/文件时，把这个 scope 写入 `run_profile.json`。
 - 已确认本轮范围且确实需要新 ASR 后，运行 `scripts/resolve_wav_only_asr_tracks.py` 并传入完整 `audio_source_report.json`。翻译范围和 ASR 音源必须分离：用户选 WAV 目录只是在选择要覆盖的内容，不是在指定 WAV 必须用于识别。脚本会先跨目录匹配同轨、时长相符且非试听/占位的原生 MP3，并自动改用它；只有匹配后仍无安全 MP3 的轨道才算 WAV-only，才询问临时 16 kHz 双声道 MP3 缓存或原始 WAV。用户明确指定 WAV 作为 ASR 音源时才可跳过该自动替换；已有可复用 `.ja.asr.srt` 时不问此题。将选择、报告和受影响轨道写入 `run_profile.json`。
 - 默认最终输出为 `.zh.vtt`；用户可明确选择 `srt` 或 `both`。`.zh.srt` 默认仍是工作中间稿。
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
@@ -41,10 +41,9 @@
 ## 开工步骤
 
 1. 运行 `scripts/resolve_project_context.py "/path/to/source_or_audio_root" --mkdir --json`，确定 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR`、`FINAL_SUBTITLE_DIR` 和 `SOURCE_AUDIO_DIR`。
-2. 运行 `scripts/scan_audio_scope.py "$SOURCE_PROJECT_DIR" --json-out "$PROJECT_ROOT/audio_scope_report.json"`，递归识别源作品文件夹下的目标音频目录和文件，包括本篇、EX/free talk、bonus、DLC、特典、促销/试听；记录总数和分类。不要只看主线编号决定跳过文件。
-3. 如果识别到 RJ 号且允许联网，先用 `scripts/fetch_dlsite_work_info.py` 抓取 DLsite 商品页元信息，保存到 `$PROJECT_ROOT/dlsite_work_info.json`。抓取失败不阻塞流程。
-4. 新跑 ASR 前，用 `scripts/select_asr_audio_source.py` 扫音频版本；用户指定版本时用用户指定，否则按 `recommended_asr_files` 使用可对齐且 `requires_review=false` 的无 SE 文件，同轨道 MP3 优先于 WAV，warning 项先核对。
-5. 新跑 ASR 时，在用户确认音频范围后运行 `scripts/resolve_wav_only_asr_tracks.py`，并传入 `audio_source_report.json`；它必须先自动选用跨目录匹配到的安全原生 MP3。只有报告最终存在 WAV-only 轨道时才询问临时双声道 MP3 缓存或原始 WAV，并把选择写入 `run_profile.json`。随后读取 `docs/preflight_confirmation.md`，向用户确认质量模式、ASR/翻译/QC 模型和输出格式。
+2. 在不提问的情况下完成只读发现：`scan_audio_scope.py`（所有目录/文件）、已有字幕盘点、`select_asr_audio_source.py`（音源候选）、必要时 DLsite 元数据获取，以及 `check_environment.py`（不安装、不启动服务）。不要只看主线编号决定跳过文件。
+3. 读取 `docs/preflight_confirmation.md`，将扫描结果和所有选择汇总为一张一次性确认单：范围、质量、ASR、翻译模型、QC 模型、输出格式、WAV-only 偏好。此时才询问用户。
+4. 收到确认单后，新跑 ASR 时运行 `resolve_wav_only_asr_tracks.py` 并传入 `audio_source_report.json`；它先自动选用跨目录匹配到的安全原生 MP3。若报告最终存在 WAV-only 轨道，直接应用用户已确认的临时双声道 MP3 缓存或原始 WAV 偏好；只有该偏好缺失或矛盾时才补问。
 6. 读取 `docs/asmr_translation_corpus.md`，再按任务读取它指向的 reference。
 7. 按路线读取有台本或无台本 workflow。
 8. 创建或更新 `$PROJECT_ROOT/project_config.json` 和 `$PROJECT_ROOT/model_profile.json`，并用 `scripts/resolve_learning_paths.py "$PROJECT_ROOT"` 解析本轮学习路径。

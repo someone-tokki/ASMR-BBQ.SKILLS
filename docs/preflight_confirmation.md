@@ -1,6 +1,6 @@
 # Preflight Confirmation
 
-开跑前必须完成 Preflight。它不是礼貌性询问，而是 ASR、翻译、QC 模型调用前的硬门禁。
+开跑前必须完成 Preflight。它不是礼貌性询问，而是 ASR、翻译、QC 模型调用前的硬门禁。所有只读扫描完成后，只发送一次结构化确认单；不得先问范围、再问模型、再问 WAV。
 
 ## 必须先做的扫描
 
@@ -22,7 +22,7 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 
 `scan_audio_scope.py` 决定“哪些文件夹/音频进入本轮翻译范围”。`select_asr_audio_source.py` 决定“这些目标内容优先用哪个音源做 ASR”。无 SE 目录是 ASR 候选来源，不等于自动只翻无 SE 目录。
 
-用户确认范围后，只有本轮需要新 ASR 时才运行：
+用户回复统一确认单后，只有本轮需要新 ASR 时才运行：
 
 ```bash
 python scripts/resolve_wav_only_asr_tracks.py \
@@ -35,12 +35,12 @@ python scripts/resolve_wav_only_asr_tracks.py \
 
 报告会先跨目录匹配同名且时长相符的原生 MP3。即使用户选择的是 WAV 目录作为翻译范围，只要没有明确指定 WAV 必须作为 ASR 音源，就自动用这个匹配 MP3 做 ASR；最终字幕仍映射回用户选择的曲目。`native_mp3_tracks` 保持直接作为 MP3 输入。只有匹配后仍为 `wav_only_choice_required=true` 时，才就 `wav_only_tracks` 追加提问；已有可用 `.ja.asr.srt` 的复用路线不运行该检查。
 
-## 询问模板
+## 一次性询问模板
 
 向用户展示：
 
 ```text
-我准备开始处理这个 ASMR。正式开跑前需要确认几个选项；请逐项回复。即使 ASR、翻译、QC 准备用同一个模型，也请分别写出三项，避免我擅自沿用模型。
+扫描已完成。下面是一张开工确认单；请一次性逐项回复。此后我会直接按确认项执行，不会再把范围、模型或 WAV 转码拆成多轮询问。即使 ASR、翻译、QC 准备用同一个模型，也请分别写出三项，避免我擅自沿用模型。
 
 1. 本轮翻译范围
 我在音声作品目录下发现这些音频文件夹：
@@ -71,17 +71,15 @@ python scripts/resolve_wav_only_asr_tracks.py \
 
 建议：已有 ASR 时先复用；否则 large-v3。
 
-4. ASR 音频准备（每次都必须显示结果）
+4. ASR 音频准备偏好（在本次确认单中一次确认）
 
-- 若跨目录找到了安全、同轨且时长匹配的原生 MP3：明确告知“将直接用 `<MP3 track>` 做 ASR；不生成临时 MP3”。
-- 若复用已有 `.ja.asr.srt`：明确告知“复用 ASR，本轮不需要音频准备”。
-- 只有在跨目录匹配后仍检测到真正 WAV-only 的 ASR 轨道时，显示以下选择题：
+- 已发现的原生 MP3 候选：`<MP3 candidates or none>`。
+- 请预先选择：若你最终选中的轨道在跨目录匹配后仍只有 WAV，使用 `转临时 MP3` 还是 `直接使用 WAV`？这个选择只会用于真正 WAV-only 的轨道。
+- 若最终选中轨道能匹配到安全原生 MP3，或复用已有 `.ja.asr.srt`，此选择自动记为“不适用”，不会再追问。
 
 本轮以下轨道只有 WAV，没有可安全使用的 MP3：
 
 `<track list from wav_only_asr_report.json>`
-
-是否只对这些轨道生成临时 16 kHz 双声道 MP3 缓存以加快 ASR？
 
 - 转临时 MP3：只转换列出的 WAV-only 轨道；保留左右声道，成功后清理缓存。
 - 直接使用 WAV：不做有损转换。
@@ -102,9 +100,9 @@ python scripts/resolve_wav_only_asr_tracks.py \
 建议：vtt。
 
 你可以直接回复类似：
-“范围：翻 1 和 3；质量：standard；ASR：复用已有；翻译模型：27b；QC 模型：27b；输出：vtt；WAV-only：转临时 MP3”
+“范围：翻 1 和 3；质量：standard；ASR：复用已有 / large-v3；翻译模型：27b；QC 模型：27b；输出：vtt；若实际 WAV-only：转临时 MP3”
 
-只有检测到 WAV-only 轨道才需要最后一项；否则 agent 必须在开工问卷中明确写明“使用原生 MP3，无需临时转换”或“复用 ASR，音频准备不适用”。用户只回复部分项目时，保留已经确认的项目，明确列出其余未确认项目并停在这里；不得用推荐值补齐后开跑。
+用户只回复部分项目时，保留已经确认的项目，明确列出其余未确认项目并停在这里；不得用推荐值补齐后开跑。只有用户没有填写 WAV 偏好，而选中范围又在解析后确实包含 WAV-only 轨道时，才允许为这个缺项补问一次。
 ```
 
 ## 落盘
