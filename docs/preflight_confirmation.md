@@ -33,14 +33,14 @@ python scripts/resolve_wav_only_asr_tracks.py \
   --json-out "$PROJECT_ROOT/wav_only_asr_report.json"
 ```
 
-报告中的 `native_mp3_tracks` 保持直接作为 MP3 输入。只有 `wav_only_choice_required=true` 时，才就 `wav_only_tracks` 追加提问；已有可用 `.ja.asr.srt` 的复用路线不运行该检查。
+报告会先跨目录匹配同名且时长相符的原生 MP3。即使用户选择的是 WAV 目录作为翻译范围，只要没有明确指定 WAV 必须作为 ASR 音源，就自动用这个匹配 MP3 做 ASR；最终字幕仍映射回用户选择的曲目。`native_mp3_tracks` 保持直接作为 MP3 输入。只有匹配后仍为 `wav_only_choice_required=true` 时，才就 `wav_only_tracks` 追加提问；已有可用 `.ja.asr.srt` 的复用路线不运行该检查。
 
 ## 询问模板
 
 向用户展示：
 
 ```text
-我准备开始处理这个 ASMR。正式开跑前需要确认几个选项。
+我准备开始处理这个 ASMR。正式开跑前需要确认几个选项；请逐项回复。即使 ASR、翻译、QC 准备用同一个模型，也请分别写出三项，避免我擅自沿用模型。
 
 1. 本轮翻译范围
 我在音声作品目录下发现这些音频文件夹：
@@ -71,7 +71,11 @@ python scripts/resolve_wav_only_asr_tracks.py \
 
 建议：已有 ASR 时先复用；否则 large-v3。
 
-4. 仅在检测到 WAV-only ASR 轨道时显示
+4. ASR 音频准备（每次都必须显示结果）
+
+- 若跨目录找到了安全、同轨且时长匹配的原生 MP3：明确告知“将直接用 `<MP3 track>` 做 ASR；不生成临时 MP3”。
+- 若复用已有 `.ja.asr.srt`：明确告知“复用 ASR，本轮不需要音频准备”。
+- 只有在跨目录匹配后仍检测到真正 WAV-only 的 ASR 轨道时，显示以下选择题：
 
 本轮以下轨道只有 WAV，没有可安全使用的 MP3：
 
@@ -82,7 +86,7 @@ python scripts/resolve_wav_only_asr_tracks.py \
 - 转临时 MP3：只转换列出的 WAV-only 轨道；保留左右声道，成功后清理缓存。
 - 直接使用 WAV：不做有损转换。
 
-本篇或其他目录中已经有可靠 MP3 的轨道会继续直接使用 MP3，不会重新转换。
+本篇或其他目录中已经有可靠、同轨且时长匹配的 MP3 时，会自动直接使用 MP3，并明确告知这一结果；不会询问 WAV 转码，也不会重新转换。
 
 5. 翻译模型
 建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
@@ -98,7 +102,9 @@ python scripts/resolve_wav_only_asr_tracks.py \
 建议：vtt。
 
 你可以直接回复类似：
-“standard，翻 1 和 3，ASR 复用已有，翻译 27b，QC 27b，vtt”
+“范围：翻 1 和 3；质量：standard；ASR：复用已有；翻译模型：27b；QC 模型：27b；输出：vtt；WAV-only：转临时 MP3”
+
+只有检测到 WAV-only 轨道才需要最后一项；否则 agent 必须在开工问卷中明确写明“使用原生 MP3，无需临时转换”或“复用 ASR，音频准备不适用”。用户只回复部分项目时，保留已经确认的项目，明确列出其余未确认项目并停在这里；不得用推荐值补齐后开跑。
 ```
 
 ## 落盘
@@ -124,6 +130,12 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
   --confirmation-source explicit_user \
   --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
   --preflight-questions-presented \
+  --confirmed-item scope \
+  --confirmed-item quality_mode \
+  --confirmed-item asr \
+  --confirmed-item translate \
+  --confirmed-item qc \
+  --confirmed-item output_format \
   --audio-scope-report "$PROJECT_ROOT/audio_scope_report.json" \
   --overwrite
 ```
@@ -137,6 +149,12 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
 --wav-only-asr-strategy mp3_cache \
 --wav-only-asr-report "$PROJECT_ROOT/wav_only_asr_report.json" \
 --wav-only-asr-track "<wav-only track>"
+```
+
+同时加入：
+
+```bash
+--confirmed-item wav_only_asr_strategy
 ```
 
 或：

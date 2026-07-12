@@ -41,6 +41,7 @@ This project should keep subtitle checks, config records, and reports portable a
 - For Windows/WSL projects without Ollama, `auto` should recommend a fallback rather than failing the workflow at the config stage.
 - Do not store API keys in `project_config.json`.
 - Use relative paths in examples and reports when the file lives in the repository workspace.
+- `ffprobe` improves cross-format duration matching but is not required merely to avoid a redundant WAV transcode. If it is unavailable on Windows or macOS, `resolve_wav_only_asr_tracks.py` may use a same normalized track name plus non-preview/non-tiny native MP3 as a conservative fallback; the report must label this as `name_match_duration_unavailable`. A duration mismatch remains unsafe and must not be auto-selected.
 
 ## Learning Paths
 

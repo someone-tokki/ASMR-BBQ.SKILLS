@@ -9,6 +9,7 @@ from typing import Any
 
 MODEL_STAGES = {"asr", "translate", "qc"}
 CONFIRMATION_SOURCES = {"explicit_user", "user_default_authorized", "imported_existing"}
+REQUIRED_CONFIRMATION_ITEMS = {"scope", "quality_mode", "asr", "translate", "qc", "output_format"}
 
 
 def load_profile(project_root: Path) -> dict[str, Any]:
@@ -34,6 +35,9 @@ def validate(profile: dict[str, Any], stage: str) -> list[str]:
         "confirmation_source is missing or invalid; auto mode is not user confirmation",
         errors,
     )
+    confirmed_items = set(profile.get("confirmed_items", []))
+    for item in sorted(REQUIRED_CONFIRMATION_ITEMS - confirmed_items):
+        require(False, f"user confirmation for {item} is missing", errors)
     if profile.get("confirmation_source") == "user_default_authorized":
         require(bool(profile.get("confirmation_text")), "confirmation_text is required when defaults were user-authorized", errors)
     require(
@@ -64,6 +68,11 @@ def validate(profile: dict[str, Any], stage: str) -> list[str]:
             errors,
         )
         require(bool(preparation.get("wav_only_report")), "selected WAV-only ASR tracks require wav_only_report", errors)
+        require(
+            "wav_only_asr_strategy" in confirmed_items,
+            "user confirmation for WAV-only MP3-cache/original-WAV choice is missing",
+            errors,
+        )
     for name in names:
         current = stages.get(name, {}) if isinstance(stages.get(name), dict) else {}
         require(bool(current.get("backend")), f"{name}.backend is missing", errors)

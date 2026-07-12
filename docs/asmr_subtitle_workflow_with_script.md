@@ -81,7 +81,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    向用户展示 `audio_scope_report.json` 中的文件夹清单，询问本轮要翻译哪些音频文件夹或具体文件。试听、DLC、EX、bonus、特典不能被默认排除；只有用户确认 `all` 时才全量处理。无 SE 目录只作为 ASR 来源优先候选，不等于自动只翻无 SE。
 
-   用户确认范围后，如果本轮需要新 ASR，运行 `resolve_wav_only_asr_tracks.py`。只有报告列出 `wav_only_tracks` 时，追加询问这些轨道要生成临时 16 kHz 双声道 MP3 缓存还是直接使用 WAV；已有可靠 MP3 的轨道保持直用。将该选择、报告和 WAV-only 轨道与质量模式、ASR/翻译/QC 模型、输出格式一起写入本次运行记录。完整命令见 `docs/preflight_confirmation.md`。
+   用户确认范围后，如果本轮需要新 ASR，运行 `resolve_wav_only_asr_tracks.py` 并传入完整 `audio_source_report.json`。范围选择不等于 ASR 音源选择：如果选中的 WAV 曲目能在其他目录匹配到同轨、时长相符、非试听/占位的原生 MP3，脚本自动用该 MP3 识别，不能再询问 WAV 转码。只有报告最终列出 `wav_only_tracks` 时，追加询问这些轨道要生成临时 16 kHz 双声道 MP3 缓存还是直接使用 WAV。将该选择、报告和真正 WAV-only 轨道与质量模式、ASR/翻译/QC 模型、输出格式一起写入本次运行记录。完整命令见 `docs/preflight_confirmation.md`。
 
    ```bash
    python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
@@ -101,11 +101,17 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --confirmation-source explicit_user \
      --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
      --preflight-questions-presented \
+     --confirmed-item scope \
+     --confirmed-item quality_mode \
+     --confirmed-item asr \
+     --confirmed-item translate \
+     --confirmed-item qc \
+     --confirmed-item output_format \
      --audio-scope-report "$PROJECT_ROOT/audio_scope_report.json" \
      --overwrite
    ```
 
-   如果用户选择全部，用 `--scope all` 并保留音频扫描报告；如果指定具体音频，用 `--scope selected_files --selected-audio-file "<file>"`。auto mode 不等于用户确认；只有用户明确说“全部按默认/你决定/不用问”时，才可改用 `--confirmation-source user_default_authorized --confirmation-text "<用户授权原话或摘要>"`。后续每个模型阶段前都要硬检查：
+   如果用户选择全部，用 `--scope all` 并保留音频扫描报告；如果指定具体音频，用 `--scope selected_files --selected-audio-file "<file>"`。`--confirmed-item` 必须逐项记录 scope、quality_mode、asr、translate、qc、output_format；检测到 WAV-only 轨道时还要加入 `--confirmed-item wav_only_asr_strategy`。用户只确认了一部分时，保留已确认项并停下追问未确认项。auto mode 不等于用户确认；只有用户明确说“全部按默认/你决定/不用问”时，才可改用 `--confirmation-source user_default_authorized --confirmation-text "<用户授权原话或摘要>"`。后续每个模型阶段前都要硬检查：
 
    ```bash
    python scripts/check_preflight.py "$PROJECT_ROOT" --stage asr

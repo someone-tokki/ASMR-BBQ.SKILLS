@@ -15,6 +15,7 @@ CHUNK_PRESETS = {"safe", "fast", "turbo"}
 QC_TIERS = {"off", "light", "standard", "deep", "two-pass"}
 CONFIRMATION_SOURCES = {"explicit_user", "user_default_authorized", "imported_existing"}
 WAV_ONLY_ASR_STRATEGIES = {"not_applicable", "mp3_cache", "original_wav"}
+REQUIRED_CONFIRMATION_ITEMS = {"scope", "quality_mode", "asr", "translate", "qc", "output_format"}
 
 
 MODE_DEFAULTS = {
@@ -77,12 +78,17 @@ def missing_fields(profile: dict[str, Any]) -> list[str]:
             missing.append("confirmation_text")
         if profile.get("preflight_questions_presented") is not True:
             missing.append("preflight_questions_presented")
+        confirmed_items = set(profile.get("confirmed_items", []))
+        for item in sorted(REQUIRED_CONFIRMATION_ITEMS - confirmed_items):
+            missing.append(f"confirmed_items.{item}")
     preparation = profile.get("asr_audio_preparation", {})
     if preparation.get("wav_only_choice_required") is True:
         if preparation.get("wav_only_strategy") not in {"mp3_cache", "original_wav"}:
             missing.append("asr_audio_preparation.wav_only_strategy")
         if not preparation.get("wav_only_report"):
             missing.append("asr_audio_preparation.wav_only_report")
+        if profile.get("confirmed") and "wav_only_asr_strategy" not in set(profile.get("confirmed_items", [])):
+            missing.append("confirmed_items.wav_only_asr_strategy")
     stages = profile.get("stages", {})
     for name in ("asr", "translate", "qc"):
         current = stages.get(name, {})
@@ -115,6 +121,7 @@ def build_profile(args: argparse.Namespace, existing: dict[str, Any] | None = No
             else ("user" if args.confirmed else "")
         ),
         "preflight_questions_presented": bool(args.preflight_questions_presented),
+        "confirmed_items": split_values(args.confirmed_item),
         "audio_scope_summary": args.audio_scope_summary,
         "audio_scope_report": args.audio_scope_report,
         "quality_mode": args.quality_mode,
@@ -177,6 +184,13 @@ def main() -> int:
     parser.add_argument("--confirmation-source", default="", choices=["", *sorted(CONFIRMATION_SOURCES)])
     parser.add_argument("--confirmation-text", default="", help="User confirmation text or concise summary.")
     parser.add_argument("--preflight-questions-presented", action="store_true")
+    parser.add_argument(
+        "--confirmed-item",
+        action="append",
+        default=[],
+        choices=sorted(REQUIRED_CONFIRMATION_ITEMS | {"wav_only_asr_strategy"}),
+        help="A choice explicitly confirmed by the user. Repeat for every required item.",
+    )
     parser.add_argument("--audio-scope-summary", default="")
     parser.add_argument("--audio-scope-report", default="")
     parser.add_argument("--wav-only-asr-required", action="store_true", help="Set only when the selected ASR-input report found WAV-only tracks.")
