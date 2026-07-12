@@ -14,6 +14,7 @@ OUTPUT_FORMATS = {"vtt", "srt", "both"}
 CHUNK_PRESETS = {"safe", "fast", "turbo"}
 QC_TIERS = {"off", "light", "standard", "deep", "two-pass"}
 CONFIRMATION_SOURCES = {"explicit_user", "user_default_authorized", "imported_existing"}
+WAV_ONLY_ASR_STRATEGIES = {"not_applicable", "mp3_cache", "original_wav"}
 
 
 MODE_DEFAULTS = {
@@ -76,6 +77,12 @@ def missing_fields(profile: dict[str, Any]) -> list[str]:
             missing.append("confirmation_text")
         if profile.get("preflight_questions_presented") is not True:
             missing.append("preflight_questions_presented")
+    preparation = profile.get("asr_audio_preparation", {})
+    if preparation.get("wav_only_choice_required") is True:
+        if preparation.get("wav_only_strategy") not in {"mp3_cache", "original_wav"}:
+            missing.append("asr_audio_preparation.wav_only_strategy")
+        if not preparation.get("wav_only_report"):
+            missing.append("asr_audio_preparation.wav_only_report")
     stages = profile.get("stages", {})
     for name in ("asr", "translate", "qc"):
         current = stages.get(name, {})
@@ -114,6 +121,12 @@ def build_profile(args: argparse.Namespace, existing: dict[str, Any] | None = No
         "scope": args.scope,
         "selected_audio_dirs": split_values(args.selected_audio_dir),
         "selected_audio_files": split_values(args.selected_audio_file),
+        "asr_audio_preparation": {
+            "wav_only_choice_required": bool(args.wav_only_asr_required),
+            "wav_only_strategy": args.wav_only_asr_strategy,
+            "wav_only_report": args.wav_only_asr_report,
+            "wav_only_tracks": split_values(args.wav_only_asr_track),
+        },
         "output_format": args.output_format,
         "chunk_preset": chunk_preset,
         "learning_loop": bool(mode_defaults["learning_loop"]),
@@ -166,6 +179,10 @@ def main() -> int:
     parser.add_argument("--preflight-questions-presented", action="store_true")
     parser.add_argument("--audio-scope-summary", default="")
     parser.add_argument("--audio-scope-report", default="")
+    parser.add_argument("--wav-only-asr-required", action="store_true", help="Set only when the selected ASR-input report found WAV-only tracks.")
+    parser.add_argument("--wav-only-asr-strategy", choices=sorted(WAV_ONLY_ASR_STRATEGIES), default="not_applicable")
+    parser.add_argument("--wav-only-asr-report", default="")
+    parser.add_argument("--wav-only-asr-track", action="append", default=[])
     parser.add_argument(
         "--assume-defaults-authorized",
         action="store_true",
@@ -180,6 +197,8 @@ def main() -> int:
         raise SystemExit(
             "--confirmed now requires --confirmation-source. Use explicit_user, user_default_authorized, or imported_existing."
         )
+    if args.wav_only_asr_required and args.wav_only_asr_strategy == "not_applicable":
+        raise SystemExit("--wav-only-asr-required requires --wav-only-asr-strategy mp3_cache or original_wav.")
 
     root = Path(args.project_root)
     path = profile_path(root)

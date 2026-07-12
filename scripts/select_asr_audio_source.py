@@ -159,7 +159,7 @@ def audio_duration(path: Path) -> float | None:
         try:
             with wave.open(path.as_posix(), "rb") as handle:
                 return handle.getnframes() / float(handle.getframerate())
-        except (OSError, wave.Error):
+        except (OSError, EOFError, wave.Error):
             return None
 
 

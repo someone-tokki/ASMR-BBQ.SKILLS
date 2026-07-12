@@ -81,7 +81,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    向用户展示 `audio_scope_report.json` 中的文件夹清单，询问本轮要翻译哪些音频文件夹或具体文件。试听、DLC、EX、bonus、特典不能被默认排除；只有用户确认 `all` 时才全量处理。无 SE 目录只作为 ASR 来源优先候选，不等于自动只翻无 SE。
 
-   同时确认质量模式、ASR/翻译/QC 模型和输出格式。用户确认后写入本次运行记录：
+   用户确认范围后，如果本轮需要新 ASR，运行 `resolve_wav_only_asr_tracks.py`。只有报告列出 `wav_only_tracks` 时，追加询问这些轨道要生成临时 16 kHz 双声道 MP3 缓存还是直接使用 WAV；已有可靠 MP3 的轨道保持直用。将该选择、报告和 WAV-only 轨道与质量模式、ASR/翻译/QC 模型、输出格式一起写入本次运行记录。完整命令见 `docs/preflight_confirmation.md`。
 
    ```bash
    python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
@@ -276,7 +276,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ASR 优化必须谨慎使用。优先用户指定音源；未指定时才优先可对齐的无 SE 音源，并在同轨道无 SE MP3/WAV 中优先 MP3。若所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
 
-   长音频或多次试跑前，可以先准备保守的 ASR 音频缓存和分段恢复计划。这个步骤不会擅自丢弃低声内容；默认只写 segments manifest，只有显式 `--normalize` 时才用 ffmpeg 生成 16k mono WAV：
+   长音频或多次试跑前，可以先准备保守的 ASR 音频缓存和分段恢复计划。这个步骤不会擅自丢弃低声内容；默认只写 segments manifest。只有用户已选择 `mp3_cache` 时，才对报告列出的 WAV-only 轨道显式 `--normalize --normalize-format mp3`，生成 16 kHz 双声道 MP3：
 
    ```bash
    python scripts/prepare_asr_audio_cache.py "$ASR_INPUT_DIR" \

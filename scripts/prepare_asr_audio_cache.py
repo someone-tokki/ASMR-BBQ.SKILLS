@@ -87,13 +87,14 @@ def normalize_audio(source: Path, target: Path, *, force: bool, output_format: s
     if not ffmpeg_available():
         return "ffmpeg_unavailable"
     target.parent.mkdir(parents=True, exist_ok=True)
+    channels = "2" if output_format == "mp3" else "1"
     command = [
         "ffmpeg",
         "-y",
         "-i",
         source.as_posix(),
         "-ac",
-        "1",
+        channels,
         "-ar",
         "16000",
     ]
@@ -107,7 +108,8 @@ def normalize_audio(source: Path, target: Path, *, force: bool, output_format: s
 def prepare_file(audio: Path, cache_root: Path, *, segment_sec: float, overlap_sec: float, normalize: bool, output_format: str, force: bool) -> dict[str, Any]:
     track_dir = cache_root / safe_stem(audio)
     track_dir.mkdir(parents=True, exist_ok=True)
-    normalized = track_dir / f"normalized_16k_mono.{output_format}"
+    normalized_channels = 2 if output_format == "mp3" else 1
+    normalized = track_dir / f"normalized_16k_{'stereo' if normalized_channels == 2 else 'mono'}.{output_format}"
     duration = wav_duration(audio)
     normalize_status = "not_requested"
     if normalize:
@@ -118,6 +120,7 @@ def prepare_file(audio: Path, cache_root: Path, *, segment_sec: float, overlap_s
         "source_audio": audio.as_posix(),
         "track_dir": track_dir.as_posix(),
         "normalized_audio": normalized.as_posix() if normalize_status in {"created", "cached"} else "",
+        "normalized_channels": normalized_channels if normalize_status in {"created", "cached"} else 0,
         "normalize_status": normalize_status,
         "duration_sec": duration,
         "segment_sec": segment_sec,
@@ -139,9 +142,9 @@ def main() -> int:
     parser.add_argument("--recursive", action="store_true")
     parser.add_argument("--segment-sec", type=float, default=900.0)
     parser.add_argument("--overlap-sec", type=float, default=8.0)
-    parser.add_argument("--normalize", action="store_true", help="Use ffmpeg to create normalized 16k mono audio when available.")
-    parser.add_argument("--normalize-format", choices=["wav", "mp3"], default="wav", help="Use MP3 for faster WAV-only ASR I/O; defaults to WAV for lossless preparation.")
-    parser.add_argument("--cleanup-mp3", action="store_true", help="Delete only generated normalized_16k_mono.mp3 cache files, then exit.")
+    parser.add_argument("--normalize", action="store_true", help="Use ffmpeg to create normalized audio; MP3 caches preserve stereo and WAV caches use mono.")
+    parser.add_argument("--normalize-format", choices=["wav", "mp3"], default="wav", help="Use a 16 kHz stereo MP3 for faster WAV-only ASR I/O; WAV preparation remains 16 kHz mono by default.")
+    parser.add_argument("--cleanup-mp3", action="store_true", help="Delete only generated normalized_16k_stereo.mp3 cache files, then exit.")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--json-out", default="")
     args = parser.parse_args()
@@ -151,7 +154,7 @@ def main() -> int:
     if args.cleanup_mp3:
         removed = 0
         if cache_root.exists():
-            for prepared in cache_root.rglob("normalized_16k_mono.mp3"):
+            for prepared in cache_root.rglob("normalized_16k_*.mp3"):
                 prepared.unlink()
                 removed += 1
         print(json.dumps({"cache_dir": cache_root.as_posix(), "removed_mp3_files": removed}, ensure_ascii=False))

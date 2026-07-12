@@ -50,6 +50,7 @@ REQUIRED_SCRIPTS = [
     "resolve_asr_route.py",
     "scan_subtitle_risks.py",
     "select_asr_audio_source.py",
+    "resolve_wav_only_asr_tracks.py",
     "detect_channel_activity.py",
     "prepare_channel_recovery.py",
     "prepare_asr_audio_cache.py",

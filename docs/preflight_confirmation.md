@@ -22,6 +22,19 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 
 `scan_audio_scope.py` 决定“哪些文件夹/音频进入本轮翻译范围”。`select_asr_audio_source.py` 决定“这些目标内容优先用哪个音源做 ASR”。无 SE 目录是 ASR 候选来源，不等于自动只翻无 SE 目录。
 
+用户确认范围后，只有本轮需要新 ASR 时才运行：
+
+```bash
+python scripts/resolve_wav_only_asr_tracks.py \
+  --audio-scope-report "$PROJECT_ROOT/audio_scope_report.json" \
+  --audio-source-report "$PROJECT_ROOT/audio_source_report.json" \
+  --scope selected_dirs \
+  --selected-audio-dir "<folder>" \
+  --json-out "$PROJECT_ROOT/wav_only_asr_report.json"
+```
+
+报告中的 `native_mp3_tracks` 保持直接作为 MP3 输入。只有 `wav_only_choice_required=true` 时，才就 `wav_only_tracks` 追加提问；已有可用 `.ja.asr.srt` 的复用路线不运行该检查。
+
 ## 询问模板
 
 向用户展示：
@@ -58,13 +71,26 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 
 建议：已有 ASR 时先复用；否则 large-v3。
 
-4. 翻译模型
+4. 仅在检测到 WAV-only ASR 轨道时显示
+
+本轮以下轨道只有 WAV，没有可安全使用的 MP3：
+
+`<track list from wav_only_asr_report.json>`
+
+是否只对这些轨道生成临时 16 kHz 双声道 MP3 缓存以加快 ASR？
+
+- 转临时 MP3：只转换列出的 WAV-only 轨道；保留左右声道，成功后清理缓存。
+- 直接使用 WAV：不做有损转换。
+
+本篇或其他目录中已经有可靠 MP3 的轨道会继续直接使用 MP3，不会重新转换。
+
+5. 翻译模型
 建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
 
-5. QC 模型
+6. QC 模型
 建议：standard 可用较快模型，premium 用强模型。无论第几轮 QC，都必须调用配置的 QC 模型，不用 agent 自审替代。
 
-6. 输出格式
+7. 输出格式
 - vtt
 - srt
 - both
@@ -103,6 +129,26 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
 ```
 
 如果用户选择全部，使用 `--scope all`，并保留 `--audio-scope-report "$PROJECT_ROOT/audio_scope_report.json"` 或 `--audio-scope-summary "..."`。如果用户指定具体文件，使用 `--scope selected_files --selected-audio-file "<file>"`。如果用户明确说“全部按默认/你决定/不用问”，可以使用 `--confirmation-source user_default_authorized --confirmation-text "<用户授权原话或摘要>"`；auto mode 自身不算授权。
+
+若 `wav_only_asr_report.json` 显示 `wav_only_choice_required=true`，在上述命令中额外写入确认结果；二选一：
+
+```bash
+--wav-only-asr-required \
+--wav-only-asr-strategy mp3_cache \
+--wav-only-asr-report "$PROJECT_ROOT/wav_only_asr_report.json" \
+--wav-only-asr-track "<wav-only track>"
+```
+
+或：
+
+```bash
+--wav-only-asr-required \
+--wav-only-asr-strategy original_wav \
+--wav-only-asr-report "$PROJECT_ROOT/wav_only_asr_report.json" \
+--wav-only-asr-track "<wav-only track>"
+```
+
+当选择 `mp3_cache` 时，只对报告列出的 WAV-only 文件逐个调用 `prepare_asr_audio_cache.py --normalize --normalize-format mp3`；生成的是临时 16 kHz 双声道 MP3，不能对已有 MP3 重转，也不能降混为单声道。
 
 随后把本次确认的 stage 模型同步到用户可编辑的模型偏好：
 

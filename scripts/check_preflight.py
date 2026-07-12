@@ -56,6 +56,14 @@ def validate(profile: dict[str, Any], stage: str) -> list[str]:
         )
     stages = profile.get("stages", {}) if isinstance(profile.get("stages"), dict) else {}
     names = MODEL_STAGES if stage == "all" else {stage}
+    preparation = profile.get("asr_audio_preparation", {}) if isinstance(profile.get("asr_audio_preparation"), dict) else {}
+    if "asr" in names and preparation.get("wav_only_choice_required") is True:
+        require(
+            preparation.get("wav_only_strategy") in {"mp3_cache", "original_wav"},
+            "selected WAV-only ASR tracks require wav_only_strategy=mp3_cache or original_wav",
+            errors,
+        )
+        require(bool(preparation.get("wav_only_report")), "selected WAV-only ASR tracks require wav_only_report", errors)
     for name in names:
         current = stages.get(name, {}) if isinstance(stages.get(name), dict) else {}
         require(bool(current.get("backend")), f"{name}.backend is missing", errors)
