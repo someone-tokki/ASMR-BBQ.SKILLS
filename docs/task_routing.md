@@ -8,9 +8,10 @@
 - 开工第一步必须用 `scripts/resolve_project_context.py` 从源路径和父目录解析 `WORK_ID`、`PROJECT_ROOT`、`SOURCE_PROJECT_DIR` 与 `FINAL_SUBTITLE_DIR`。源文件夹名是 `RJxxxx` 时必须识别为作品号。
 - `SOURCE_PROJECT_DIR` 默认就是源 ASMR 作品目录，即识别到的 RJ 父目录或音频源上级作品目录；不再默认创建 `generated_subtitles/<WORK_ID>`。除非用户明确指定 `--output-root` 或 `--project-root`，不要把项目输出另放到工作区。
 - `PROJECT_ROOT` 默认是 `$SOURCE_PROJECT_DIR/subtitle_project/`，用于工程文件和中间文件；最终 `.zh.vtt/.zh.srt` 放在 `$FINAL_SUBTITLE_DIR`，默认是 `$SOURCE_PROJECT_DIR/subtitles/`。
+- 名称以 `._` 开头的文件是 macOS AppleDouble 元数据，不属于作品音频或字幕；扫描、选源、缓存和 ASR 一律忽略，不能把它们列入范围或报成音频错误。
 - 若音频包里同时存在有 SE/无 SE 版本，用户指定音源优先；未指定时，用 `scripts/select_asr_audio_source.py` 按轨道匹配。只有能和普通音频对齐且 `requires_review=false` 的无 SE 文件才作为默认 ASR 输入；同轨道无 SE 同时有 MP3/WAV 时默认选 MP3，除非报告提示疑似试听、裁剪、占位或映射不清。
 - 翻译范围必须在 Preflight 阶段确认。先完成 `scripts/scan_audio_scope.py`、`scripts/select_asr_audio_source.py`、既有字幕盘点和只读环境检测；不要在扫描后立刻打断用户询问范围。试听、DLC、EX/free talk、bonus、特典等不能被默认歧视或跳过。将文件夹清单、候选音源和环境结论汇入一张一次性确认单，与 ASR/翻译/QC 模型、输出格式和 WAV-only 偏好一起询问；只有用户确认 `all` 时才全量处理，用户选择部分文件夹/文件时，把这个 scope 写入 `run_profile.json`。
-- 已确认本轮范围且确实需要新 ASR 后，运行 `scripts/resolve_wav_only_asr_tracks.py` 并传入完整 `audio_source_report.json`。翻译范围和 ASR 音源必须分离：用户选 WAV 目录只是在选择要覆盖的内容，不是在指定 WAV 必须用于识别。脚本会先跨目录匹配同轨、时长相符且非试听/占位的原生 MP3，并自动改用它；只有匹配后仍无安全 MP3 的轨道才算 WAV-only，才询问临时 16 kHz 双声道 MP3 缓存或原始 WAV。用户明确指定 WAV 作为 ASR 音源时才可跳过该自动替换；已有可复用 `.ja.asr.srt` 时不问此题。将选择、报告和受影响轨道写入 `run_profile.json`。
+- 已确认本轮范围且确实需要新 ASR 后，运行 `scripts/resolve_wav_only_asr_tracks.py` 并传入完整 `audio_source_report.json`。翻译范围和 ASR 音源必须分离：用户选 WAV 目录只是在选择要覆盖的内容，不是在指定 WAV 必须用于识别。脚本会先跨目录匹配同轨、时长相符且非试听/占位的原生 MP3，并自动改用它；只要安全原生 MP3 存在，就禁止 WAV 转临时 MP3。只有匹配后仍无安全 MP3 的轨道才算 WAV-only，才允许按用户已确认的偏好生成临时 16 kHz 双声道 MP3 或使用原始 WAV。缓存命令必须传入 `--wav-only-report`，由脚本强制限制为报告列出的轨道。用户明确指定 WAV 作为 ASR 音源时才可跳过该自动替换；已有可复用 `.ja.asr.srt` 时不问此题。将选择、报告和受影响轨道写入 `run_profile.json`。
 - 默认最终输出为 `.zh.vtt`；用户可明确选择 `srt` 或 `both`。`.zh.srt` 默认仍是工作中间稿。
 - 不因为当前机器不能新跑 ASR 就阻塞已有 ASR 项目的翻译、QC、风险扫描、可读性检查和导出。
 - 翻译和 QC chunk 以语义连续性优先，字符/token 预算只作为上限。优先使用动态 chunk 和 halo 上下文；halo 只用于理解，不要求模型输出上下文编号。

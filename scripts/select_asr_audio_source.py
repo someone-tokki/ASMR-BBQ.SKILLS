@@ -182,10 +182,10 @@ def choose_preferred_no_se(candidates: list[AudioFile]) -> AudioFile:
 
 def iter_audio_files(root: Path) -> list[Path]:
     if root.is_file():
-        return [root] if root.suffix.lower() in AUDIO_EXTENSIONS else []
+        return [root] if not root.name.startswith("._") and root.suffix.lower() in AUDIO_EXTENSIONS else []
     if not root.exists():
         raise FileNotFoundError(root)
-    return sorted(path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS)
+    return sorted(path for path in root.rglob("*") if path.is_file() and not path.name.startswith("._") and path.suffix.lower() in AUDIO_EXTENSIONS)
 
 
 def rel(path: Path, base: Path) -> str:

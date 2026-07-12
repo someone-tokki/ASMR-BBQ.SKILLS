@@ -43,7 +43,7 @@ def main() -> int:
     manifest_path = Path(args.manifest) if args.manifest else out_dir / "asr_manifest.json"
     manifest = load_manifest(manifest_path)
 
-    files = sorted(audio_dir.glob(args.glob))
+    files = sorted(path for path in audio_dir.glob(args.glob) if path.is_file() and not path.name.startswith("._"))
     for audio in files:
         json_path, srt_path = output_paths(audio, out_dir)
         if args.resume and not args.force:

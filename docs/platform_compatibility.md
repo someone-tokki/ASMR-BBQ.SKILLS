@@ -2,6 +2,8 @@
 
 This project should keep subtitle checks, config records, and reports portable across macOS, Windows, and WSL. Platform-specific tools are implementation choices, not workflow contracts.
 
+macOS may add AppleDouble metadata files named `._<original-name>` when copying to non-Apple filesystems. Treat these as metadata on every platform: they are never audio or subtitle inputs, and must be ignored rather than surfaced as a user decision or an ASR failure.
+
 ## Backend Defaults
 
 - ASR backend defaults to `auto`, which means "probe local platform API `/audio/transcriptions` first, then configured `local-asr-api`, then packaged Python Whisper, then controlled setup"; it does not mean "install or try MLX". If Python `whisper` is missing and no local ASR API is reachable, use `setup_whisper_backend.py` as the controlled package/model setup route. Use `mlx_whisper` only when the user/project explicitly selects that route, such as `--asr-backend mlx_whisper` or `platform_profile=macos-mlx`.

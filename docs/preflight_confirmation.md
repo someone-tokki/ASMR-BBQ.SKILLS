@@ -164,7 +164,7 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
 --wav-only-asr-track "<wav-only track>"
 ```
 
-当选择 `mp3_cache` 时，只对报告列出的 WAV-only 文件逐个调用 `prepare_asr_audio_cache.py --normalize --normalize-format mp3`；生成的是临时 16 kHz 双声道 MP3，不能对已有 MP3 重转，也不能降混为单声道。
+当选择 `mp3_cache` 时，只对报告列出的 WAV-only 文件调用 `prepare_asr_audio_cache.py --normalize --normalize-format mp3 --wav-only-report "$PROJECT_ROOT/wav_only_asr_report.json"`；`--wav-only-report` 是强制门禁，报告只要存在安全原生 MP3 或未将轨道标为 WAV-only，脚本都会拒绝转换。生成的是临时 16 kHz 双声道 MP3，不能对已有 MP3 重转，也不能降混为单声道。
 
 随后把本次确认的 stage 模型同步到用户可编辑的模型偏好：
 

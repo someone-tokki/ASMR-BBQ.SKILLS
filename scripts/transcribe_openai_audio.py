@@ -82,9 +82,9 @@ def transcribe(audio_path: Path, *, base_url: str, api_key: str, model: str, lan
 
 def collect_audio(input_path: Path, pattern: str, recursive: bool) -> list[Path]:
     if input_path.is_file():
-        return [input_path] if input_path.suffix.lower() in AUDIO_EXTENSIONS else []
+        return [input_path] if not input_path.name.startswith("._") and input_path.suffix.lower() in AUDIO_EXTENSIONS else []
     glob_pattern = f"**/{pattern}" if recursive else pattern
-    return sorted(path for path in input_path.glob(glob_pattern) if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS)
+    return sorted(path for path in input_path.glob(glob_pattern) if path.is_file() and not path.name.startswith("._") and path.suffix.lower() in AUDIO_EXTENSIONS)
 
 
 def main() -> int:

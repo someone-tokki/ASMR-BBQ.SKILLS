@@ -17,7 +17,7 @@ SE_BGM_MARKERS = ("bgm", "se", "効果音", "環境音")
 
 
 def is_audio(path: Path) -> bool:
-    return path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
+    return path.is_file() and not path.name.startswith("._") and path.suffix.lower() in AUDIO_EXTENSIONS
 
 
 def classify_folder(path: Path) -> list[str]:

@@ -20,9 +20,34 @@ def now_utc() -> str:
 
 def collect_audio(input_path: Path, pattern: str, recursive: bool) -> list[Path]:
     if input_path.is_file():
-        return [input_path] if input_path.suffix.lower() in AUDIO_EXTENSIONS else []
+        return [input_path] if not input_path.name.startswith("._") and input_path.suffix.lower() in AUDIO_EXTENSIONS else []
     glob_pattern = f"**/{pattern}" if recursive else pattern
-    return sorted(path for path in input_path.glob(glob_pattern) if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS)
+    return sorted(path for path in input_path.glob(glob_pattern) if path.is_file() and not path.name.startswith("._") and path.suffix.lower() in AUDIO_EXTENSIONS)
+
+
+def wav_only_inputs_from_report(path: Path) -> tuple[Path, set[str]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("wav_only_choice_required") is not True:
+        raise SystemExit("Temporary MP3 preparation is blocked: the WAV-only report does not require it.")
+    source_root_text = str(data.get("source_root", "")).strip()
+    if not source_root_text:
+        raise SystemExit("Temporary MP3 preparation is blocked: WAV-only report has no source_root.")
+    source_root = Path(source_root_text).expanduser()
+    allowed = {
+        str(track.get("asr_input", ""))
+        for track in data.get("wav_only_tracks", [])
+        if isinstance(track, dict) and str(track.get("extension", "")).lower() in {".wav", ".wave"}
+    }
+    if not allowed:
+        raise SystemExit("Temporary MP3 preparation is blocked: WAV-only report contains no approved WAV inputs.")
+    return source_root, allowed
+
+
+def relative_to_source(path: Path, source_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(source_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def wav_duration(path: Path) -> float | None:
@@ -144,6 +169,7 @@ def main() -> int:
     parser.add_argument("--overlap-sec", type=float, default=8.0)
     parser.add_argument("--normalize", action="store_true", help="Use ffmpeg to create normalized audio; MP3 caches preserve stereo and WAV caches use mono.")
     parser.add_argument("--normalize-format", choices=["wav", "mp3"], default="wav", help="Use a 16 kHz stereo MP3 for faster WAV-only ASR I/O; WAV preparation remains 16 kHz mono by default.")
+    parser.add_argument("--wav-only-report", default="", help="Required for temporary MP3 conversion; restricts conversion to resolver-approved WAV-only tracks.")
     parser.add_argument("--cleanup-mp3", action="store_true", help="Delete only generated normalized_16k_stereo.mp3 cache files, then exit.")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--json-out", default="")
@@ -160,8 +186,13 @@ def main() -> int:
         print(json.dumps({"cache_dir": cache_root.as_posix(), "removed_mp3_files": removed}, ensure_ascii=False))
         return 0
     audio_files = collect_audio(input_path, args.glob, args.recursive)
+    if args.normalize and args.normalize_format == "mp3":
+        if not args.wav_only_report:
+            raise SystemExit("Temporary MP3 preparation requires --wav-only-report; do not convert WAV when a native MP3 source may exist.")
+        source_root, allowed = wav_only_inputs_from_report(Path(args.wav_only_report))
+        audio_files = [audio for audio in audio_files if relative_to_source(audio, source_root) in allowed]
     if not audio_files:
-        raise SystemExit(f"No supported audio files found: {input_path}")
+        raise SystemExit(f"No resolver-approved WAV-only audio files found: {input_path}")
     records = [
         prepare_file(
             audio,

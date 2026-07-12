@@ -295,12 +295,15 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    ASR 优化必须谨慎使用。优先用户指定音源；未指定时才优先可对齐的无 SE 音源，并在同轨道无 SE MP3/WAV 中优先 MP3。若所选后端支持 VAD，可用它跳过长静音或纯环境声，但不能切掉低声耳语、喘息中的有效台词、重要停顿或安静对白。如果需要对长音频分段，使用 overlap/stride 防止边界截断，并在后端支持时把前一段 transcript 作为下一段 prompt/context，保持词汇、称呼和语气一致。分段 ASR 必须保留分段级 manifest 或等价记录，保证中断后只重跑受影响分段；现有整文件 ASR 仍保留音频文件级断点续跑。对于喘息、耳舐、亲吻等重复音效，后续字幕可以简化成短提示或少量节奏，不要让 ASR/翻译堆出无意义重复文本墙。
 
-   长音频或多次试跑前，可以先准备保守的 ASR 音频缓存和分段恢复计划。这个步骤不会擅自丢弃低声内容；默认只写 segments manifest。只有用户已选择 `mp3_cache` 时，才对报告列出的 WAV-only 轨道显式 `--normalize --normalize-format mp3`，生成 16 kHz 双声道 MP3：
+   长音频或多次试跑前，可以先准备保守的 ASR 音频缓存和分段恢复计划。这个步骤不会擅自丢弃低声内容；默认只写 segments manifest。只有报告确认 `wav_only_choice_required=true` 且用户已选择 `mp3_cache` 时，才生成 16 kHz 双声道 MP3。必须传入 WAV-only 报告；脚本会拒绝转换任何存在安全原生 MP3 的轨道：
 
    ```bash
-   python scripts/prepare_asr_audio_cache.py "$ASR_INPUT_DIR" \
+   python scripts/prepare_asr_audio_cache.py "$SOURCE_PROJECT_DIR" \
      --cache-dir "$PROJECT_ROOT/asr_prepared" \
      --recursive \
+     --normalize \
+     --normalize-format mp3 \
+     --wav-only-report "$PROJECT_ROOT/wav_only_asr_report.json" \
      --segment-sec 900 \
      --overlap-sec 8 \
      --json-out "$PROJECT_ROOT/asr_prepared/asr_prepared_report.json"

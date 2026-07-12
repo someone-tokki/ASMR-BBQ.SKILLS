@@ -93,6 +93,8 @@ def selected_scope_files(report: dict[str, Any], *, scope: str, selected_dirs: l
             if not isinstance(item, dict):
                 continue
             path = normalized_path(str(item.get("path", "")), root)
+            if Path(path).name.startswith("._"):
+                continue
             if scope == "selected_files":
                 include = path in wanted_files
             else:
@@ -137,6 +139,8 @@ def build_report(scope_report: dict[str, Any], source_report: dict[str, Any] | N
         if not asr_source_explicit and str(candidate.get("extension", Path(str(candidate.get("path", ""))).suffix)).lower() in WAV_EXTENSIONS:
             tolerance = float((source_report or {}).get("duration_tolerance", DEFAULT_DURATION_TOLERANCE))
             for source_item in source_files:
+                if Path(str(source_item.get("path", ""))).name.startswith("._"):
+                    continue
                 if track_key(str(source_item.get("path", ""))) != key:
                     continue
                 if is_safe_mp3_candidate(source_item, target_duration=candidate.get("duration_sec"), tolerance=tolerance):
@@ -161,6 +165,7 @@ def build_report(scope_report: dict[str, Any], source_report: dict[str, Any] | N
             other_tracks.append(record)
     return {
         "version": 1,
+        "source_root": str(scope_report.get("source_root", "")),
         "scope": scope,
         "selected_audio_dirs": selected_dirs,
         "selected_audio_files": selected_files,
