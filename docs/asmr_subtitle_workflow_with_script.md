@@ -17,7 +17,7 @@
 
 输入：
 
-- 原始 ASMR 目录，例如 `/Users/someone_tokki/Desktop/asmr/RJxxxx`
+- 原始 ASMR 目录，例如 `/path/to/asmr/RJxxxx`
 - 音频文件目录，通常包含本篇、EX/free talk、bonus、DLC、特典、促销/试听部分
 - 对照台本，例如 PDF/TXT/HTML
 - 可用的 ASR/翻译工具和模型。工具可以变化，流程不绑定某个固定模型。

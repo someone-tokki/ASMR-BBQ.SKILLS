@@ -1,4 +1,4 @@
-# ASMR-BBQ.SKILLS
+# ASMR Subtitle Translator
 
 这是一个面向简体中文 ASMR 字幕工作的 Skill 项目，主要服务于日文 ASMR / 同人音声的翻译、校对、质检、导出和学习回收。
 
@@ -14,20 +14,13 @@
 
 ## 入口
 
-Skill 的入口文件是 [SKILL.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/SKILL.md)。目前的工作流是：
+Skill 的入口文件是 [SKILL.md](SKILL.md)。目前的工作流是：
 
 1. 先读 `SKILL.md`。
 2. 再读 `docs/task_routing.md` 和对应的工作流文档。
 3. 然后调用 `scripts/` 里的脚本完成流程。
 
-计划中的独立 CLI 入口写在 [docs/cli_design.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/cli_design.md)。
-
-```bash
-python scripts/asmr_bbq.py status /path/to/RJxxxxxx
-python scripts/asmr_bbq.py run /path/to/RJxxxxxx --interactive
-```
-
-在这个 CLI 真正存在之前，直接按照 Skill 文档里的脚本流程执行。
+计划中的独立 CLI 入口写在 [docs/cli_design.md](docs/cli_design.md)。在它实现之前，直接按照 Skill 文档里的脚本流程执行。
 
 ## 输出结构
 
@@ -99,10 +92,10 @@ python scripts/manage_shared_corpus_review.py \
 
 ## 文档
 
-- [docs/task_routing.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/task_routing.md): 选择正确的工作流。
-- [docs/preflight_confirmation.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/preflight_confirmation.md): 模型调用前需要的确认。
-- [docs/asmr_subtitle_workflow_with_script.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/asmr_subtitle_workflow_with_script.md): 有台本时的流程。
-- [docs/asmr_subtitle_workflow_no_script.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/asmr_subtitle_workflow_no_script.md): 只有音频时的流程。
-- [docs/learning_library_guide.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/learning_library_guide.md): 学习库和 shared corpus review 规则。
-- [docs/platform_compatibility.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/platform_compatibility.md): 后端和平台规则。
-- [docs/cli_design.md](/Users/someone_tokki/.codex/worktrees/765b/Asmr/docs/cli_design.md): 规划中的一键 CLI 设计。
+- [docs/task_routing.md](docs/task_routing.md): 选择正确的工作流。
+- [docs/preflight_confirmation.md](docs/preflight_confirmation.md): 模型调用前需要的确认。
+- [docs/asmr_subtitle_workflow_with_script.md](docs/asmr_subtitle_workflow_with_script.md): 有台本时的流程。
+- [docs/asmr_subtitle_workflow_no_script.md](docs/asmr_subtitle_workflow_no_script.md): 只有音频时的流程。
+- [docs/learning_library_guide.md](docs/learning_library_guide.md): 学习库和 shared corpus review 规则。
+- [docs/platform_compatibility.md](docs/platform_compatibility.md): 后端和平台规则。
+- [docs/cli_design.md](docs/cli_design.md): 规划中的一键 CLI 设计。

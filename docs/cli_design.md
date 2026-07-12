@@ -1,12 +1,12 @@
 # CLI Design
 
-This document defines the planned `asmr-bbq` command-line entry point. The CLI is an orchestrator over existing scripts; it must not replace the Skill's decision rules or duplicate lower-level logic.
+This document defines the planned `asmr-subtitle` command-line entry point. The CLI is an orchestrator over existing scripts; it must not replace the Skill's decision rules or duplicate lower-level logic.
 
 ## Boundary
 
 ```text
 SKILL.md = agent decision policy
-scripts/asmr_bbq.py = stable workflow entry point
+scripts/asmr_subtitle.py = stable workflow entry point
 scripts/*.py = individual tools
 docs/*.md = operating rules and user-facing guidance
 ```
@@ -18,10 +18,10 @@ The CLI should make normal work easy. The Skill remains responsible for deciding
 Planned commands:
 
 ```bash
-python scripts/asmr_bbq.py init <work_dir>
-python scripts/asmr_bbq.py status <work_dir>
-python scripts/asmr_bbq.py run <work_dir> --interactive
-python scripts/asmr_bbq.py resume <work_dir>
+python scripts/asmr_subtitle.py init <work_dir>
+python scripts/asmr_subtitle.py status <work_dir>
+python scripts/asmr_subtitle.py run <work_dir> --interactive
+python scripts/asmr_subtitle.py resume <work_dir>
 ```
 
 ### `init`
