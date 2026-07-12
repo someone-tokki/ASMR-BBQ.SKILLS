@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import unicodedata
+import wave
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -77,6 +79,7 @@ class AudioFile:
     extension: str
     track_key: str
     size_bytes: int
+    duration_seconds: float | None
 
 
 @dataclass
@@ -140,6 +143,32 @@ def path_warnings(path_text: str, size_bytes: int) -> list[str]:
     return warnings
 
 
+def audio_duration(path: Path) -> float | None:
+    """Return container duration without loading the entire audio stream."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nk=1:nw=1", path.as_posix()],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return float(result.stdout.strip())
+    except (FileNotFoundError, ValueError, subprocess.CalledProcessError):
+        if path.suffix.lower() != ".wav":
+            return None
+        try:
+            with wave.open(path.as_posix(), "rb") as handle:
+                return handle.getnframes() / float(handle.getframerate())
+        except (OSError, wave.Error):
+            return None
+
+
+def duration_error(left: float | None, right: float | None) -> float | None:
+    if left is None or right is None or max(left, right) <= 0:
+        return None
+    return abs(left - right) / max(left, right)
+
+
 def choose_preferred_no_se(candidates: list[AudioFile]) -> AudioFile:
     return sorted(
         candidates,
@@ -166,7 +195,7 @@ def rel(path: Path, base: Path) -> str:
         return path.as_posix()
 
 
-def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dict:
+def build_report(paths: list[Path], *, user_selected: Path | None = None, duration_tolerance: float = 0.02) -> dict:
     files: list[AudioFile] = []
     roots = [path.resolve() for path in paths]
     common_base = roots[0] if len(roots) == 1 and roots[0].is_dir() else Path.cwd()
@@ -183,6 +212,7 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
                     extension=audio_path.suffix.lower(),
                     track_key=track_key(audio_path),
                     size_bytes=audio_path.stat().st_size,
+                    duration_seconds=audio_duration(audio_path),
                 )
             )
 
@@ -211,16 +241,21 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
         if no_se_items:
             preferred = choose_preferred_no_se(no_se_items)
             warnings = path_warnings(preferred.path, preferred.size_bytes)
+            duration_matched_regular = [
+                item for item in regular_items
+                if (error := duration_error(preferred.duration_seconds, item.duration_seconds)) is not None and error <= duration_tolerance
+            ]
             reason_parts = ["prefer_no_se"]
             if preferred.extension == ".mp3":
                 reason_parts.append("mp3_preferred_for_faster_asr_when_track_matches")
             elif any(item.extension == ".mp3" for item in no_se_items):
                 reason_parts.append("mp3_candidate_not_selected_due_warning_or_tie_break")
-            if regular_items:
-                reason_parts.append("matched_regular_audio_exists")
+            if duration_matched_regular:
+                reason_parts.append("matched_regular_audio_name_and_duration")
             else:
-                reason_parts.append("no_regular_counterpart_detected_verify_mapping")
+                reason_parts.append("no_regular_name_and_duration_match_verify_mapping")
                 unmatched_no_se.extend(asdict(item) for item in no_se_items)
+                warnings.append("no_regular_duration_match")
             if len(no_se_items) > 1:
                 duplicate_no_se_groups.append(
                     {
@@ -235,10 +270,10 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
                     path=preferred.path,
                     directory=preferred.directory,
                     extension=preferred.extension,
-                    matched_counterparts=[item.path for item in sorted(regular_items, key=lambda item: item.path)],
+                    matched_counterparts=[item.path for item in sorted(duration_matched_regular, key=lambda item: item.path)],
                     selection_reason=", ".join(reason_parts),
                     warnings=warnings,
-                    requires_review=not regular_items or bool(warnings),
+                    requires_review=not duration_matched_regular or bool(warnings),
                 )
             )
         else:
@@ -287,6 +322,7 @@ def build_report(paths: list[Path], *, user_selected: Path | None = None) -> dic
 
     return {
         "decision": decision,
+        "duration_tolerance": duration_tolerance,
         "audio_count": len(files),
         "counts": dict(counts),
         "recommended_asr_inputs": recommended,
@@ -329,12 +365,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Scan ASMR audio folders and prefer no-SE variants for ASR when available unless the user chooses another version.")
     parser.add_argument("paths", nargs="+", help="Audio file or directory path(s) to scan.")
     parser.add_argument("--user-selected", help="Explicit user-selected ASR source; overrides the default no-SE preference.")
+    parser.add_argument("--duration-tolerance", type=float, default=0.02, help="Maximum relative duration difference for automatic no-SE matching (default: 2%%).")
     parser.add_argument("--json-out", help="Write a JSON report.")
     args = parser.parse_args()
 
     report = build_report(
         [Path(path).expanduser() for path in args.paths],
         user_selected=Path(args.user_selected).expanduser() if args.user_selected else None,
+        duration_tolerance=args.duration_tolerance,
     )
     print_report(report)
     if args.json_out:
