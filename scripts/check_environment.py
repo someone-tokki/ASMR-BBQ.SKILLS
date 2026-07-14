@@ -56,6 +56,8 @@ REQUIRED_SCRIPTS = [
     "prepare_asr_audio_cache.py",
     "subtitle_readability.py",
     "review_qc_report.py",
+    "validate_qc_closure.py",
+    "apply_qc_decisions.py",
     "manage_project_config.py",
     "manage_model_profile.py",
     "prepare_model_stage.py",

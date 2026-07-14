@@ -608,11 +608,12 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    处理原则：
 
-   - 第一轮模型 QC 后，agent 必须处理 `qc_report.json` 中所有明确问题，并完成一轮修正；这一步不是可选项。
+   - 第一轮模型 QC 后，agent 必须处置 `qc_report.json` 中每一项候选：`accept`、`reject` 或 `defer`，不能把 `pending` 留到交付。
    - 第一轮、第二轮以及后续任何模型 QC/精修 QC，都必须调用当前解析到的 QC backend/base URL/model。agent 自身模型只能负责编排、读报告、对照证据和标记 accept/reject/defer，不能充当 QC 模型。
    - agent 处理 QC 建议时，不能仅凭自身模型判断；必须对照日文 ASR、当前中文字幕、相邻字幕、台本和语料库规则。agent 的职责是执行证据驱动的修正流程，而不是凭感觉重翻。
    - `qc_report.json` 中的建议是候选，不可照单全收。修正前回看相邻字幕、台本对应段落和轨道标题；有台本时以台本和上下文为准。
-   - 明确正确的建议应修正；明显违背台本或上下文的建议记录为误报，不修改字幕；无法判断的条目标为待复核。
+   - `accept` 必须写明来源证据、处置理由和最小替换文本；`reject` 必须写明误报理由；`defer` 必须标记 `review_required=true` 并写清人工或音频复核方式。语义、人称、术语、动作、情绪、因果和程度改动不得只凭 QC 建议接受。
+   - 明确正确的建议应修正；明显违背台本或上下文的建议记录为误报，不修改字幕；无法判断的条目标为待复核，不能因“更自然”扩写原文。
    - 第一轮 QC 修正后必须再跑结构校验、高风险扫描和可读性检查。
    - 如果需要第二轮 QC、仍有待复核条目、模型建议互相冲突，或用户想介入，再生成人工审阅材料。
 
@@ -627,7 +628,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --json-out "$PROJECT_ROOT/qc_review_items.json"
    ```
 
-   人可以直接基于 `qc_report.json` 提意见，也可以在 `qc_review.md` 中逐条标记 `accept`、`reject` 或 `defer`。`review_qc_report.py` 只生成审阅材料，不自动改字幕。
+   人可以直接基于 `qc_report.json` 提意见，也可以在 `qc_review.md` 中逐条标记 `accept`、`reject` 或 `defer`。JSON 项必须补齐 `decision_reason`、`evidence_level`、`evidence_summary`；`accept` 还要填 `replacement`，`defer` 还要填 `review_required=true` 与 `review_method`。`review_qc_report.py` 只生成审阅材料，不自动改字幕。
 
    如果第一轮强制 QC 和修正后，用户仍觉得台词不满意，把后续处理作为“追加 QC 精修功能”，而不是重做基础流程。每一轮都要有独立目录，避免覆盖第一次 `qc_report.json`：
 
@@ -650,12 +651,26 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
 
    该命令会创建 `$PROJECT_ROOT/qc_refinement/round_NN/manifest.json`、`context_profile.md` 和 `next_steps.md`。`context_profile.md` 会记录自动识别到的作品情境、轨道抽样和用户引导。按 `next_steps.md` 执行：通过配置的本地/项目 QC 模型重新跑一轮聚焦 QC、生成 review items、由 agent 基于证据标记 `accept/reject/defer`、应用 accepted 项、再跑结构/风险/可读性检查。用户仍不满意时再开下一轮。任何追加轮次都不能跳过本地 QC 调用而改成 agent 自身模型 QC。
 
-   若 agent 已经按证据确认一批明确问题，可直接编辑 `qc_review_items.json`：把明确应修的条目标为 `"decision": "accept"`，必要时把最终译文写入 `"replacement"`；误报标为 `reject`，无法判断标为 `defer`。随后先 dry-run，再正式应用：
+   完成逐项决策后，必须先生成闭环报告和自动人工/音频复核队列。闭环脚本会拒绝漏决策、无证据的 `accept`、没有理由的 `reject`，以及没有复核方式的 `defer`；高风险语义扩写会转入复核队列而不放行：
+
+   ```bash
+   python scripts/validate_qc_closure.py \
+     "$PROJECT_ROOT/qc_report.json" \
+     "$PROJECT_ROOT/qc_review_items.json" \
+     --asr-dir "$ASR_DIR" \
+     --zh-dir "$ZH_SRT_DIR" \
+     --json-out "$PROJECT_ROOT/qc_closure_report.json" \
+     --manual-review-json "$PROJECT_ROOT/qc_manual_review.json" \
+     --manual-review-md "$PROJECT_ROOT/qc_manual_review.md"
+   ```
+
+   只有 `qc_closure_report.json` 返回 `pass` 时才能应用。先 dry-run，再正式应用：
 
    ```bash
    python scripts/apply_qc_decisions.py \
      "$PROJECT_ROOT/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
+     --closure-report "$PROJECT_ROOT/qc_closure_report.json" \
      --json-out "$PROJECT_ROOT/qc_apply_report.json"
    ```
 
@@ -663,12 +678,13 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
    python scripts/apply_qc_decisions.py \
      "$PROJECT_ROOT/qc_review_items.json" \
      --zh-dir "$ZH_SRT_DIR" \
+     --closure-report "$PROJECT_ROOT/qc_closure_report.json" \
      --apply \
      --backup-dir "$PROJECT_ROOT/qc_apply_backup" \
      --json-out "$PROJECT_ROOT/qc_apply_report.json"
    ```
 
-   只允许应用已确认的 `accept` 项；应用后必须再跑结构校验、高风险扫描和可读性检查。
+   只允许应用闭环报告放行的 `accept` 项；应用报告会记录 `issue_id`、证据等级和处置理由。`defer` 项保留在 `qc_manual_review.md/json`，可带标记交付但必须在最终说明中列出数量与路径。应用后必须再跑结构校验、高风险扫描和可读性检查。
 
 11. 附加音频单独复查
 
