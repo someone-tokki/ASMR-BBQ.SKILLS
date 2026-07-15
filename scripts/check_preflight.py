@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 MODEL_STAGES = {"asr", "translate", "qc"}
 CONFIRMATION_SOURCES = {"explicit_user", "user_default_authorized", "imported_existing"}
 REQUIRED_CONFIRMATION_ITEMS = {"scope", "quality_mode", "asr", "translate", "qc", "output_format"}
+PREFLIGHT_MARKER = "<!-- ASMR-PREFLIGHT v1 required-items: scope,quality_mode,asr,translate,qc,output_format,wav_only_asr_strategy -->"
 
 
 def load_profile(project_root: Path) -> dict[str, Any]:
@@ -19,7 +21,10 @@ def load_profile(project_root: Path) -> dict[str, Any]:
             "Preflight confirmation missing: run_profile.json not found. "
             "The agent must ask the user to confirm ASR/translation/QC models, quality mode, scope, and output format before running."
         )
-    return json.loads(path.read_text(encoding="utf-8"))
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(profile, dict):
+        profile["_preflight_profile_root"] = project_root.resolve().as_posix()
+    return profile
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -45,6 +50,22 @@ def validate(profile: dict[str, Any], stage: str) -> list[str]:
         "preflight_questions_presented must be true; the agent must show the mandatory questions/summary before model calls",
         errors,
     )
+    questionnaire = profile.get("preflight_questionnaire", {})
+    if not isinstance(questionnaire, dict) or not questionnaire.get("path") or not questionnaire.get("sha256"):
+        errors.append("generated preflight_questionnaire record is missing")
+    else:
+        questionnaire_path = Path(str(questionnaire["path"]))
+        if not questionnaire_path.is_absolute():
+            questionnaire_path = Path(str(profile.get("_preflight_profile_root", "."))) / questionnaire_path
+        if not questionnaire_path.is_file():
+            errors.append("generated preflight_questionnaire file is missing")
+        else:
+            content = questionnaire_path.read_text(encoding="utf-8")
+            digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if PREFLIGHT_MARKER not in content:
+                errors.append("preflight_questionnaire is not an ASMR-PREFLIGHT v1 checklist")
+            if digest != questionnaire["sha256"]:
+                errors.append("preflight_questionnaire changed after user confirmation; render and confirm it again")
     require(profile.get("quality_mode") in {"draft", "standard", "premium", "polish"}, "quality_mode is missing or invalid", errors)
     require(profile.get("output_format") in {"vtt", "srt", "both"}, "output_format is missing or invalid", errors)
     require(profile.get("scope") in {"all", "selected_dirs", "selected_files"}, "scope must be confirmed as all, selected_dirs, or selected_files", errors)

@@ -37,6 +37,7 @@ REQUIRED_SCRIPTS = [
     "subtitle_chunking.py",
     "scan_audio_scope.py",
     "prepare_run_profile.py",
+    "render_preflight_questionnaire.py",
     "check_preflight.py",
     "preflight_gate.py",
     "repair_asr_timestamps.py",

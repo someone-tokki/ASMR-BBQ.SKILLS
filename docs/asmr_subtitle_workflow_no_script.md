@@ -89,7 +89,11 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --json-out "$PROJECT_ROOT/audio_scope_report.json"
    ```
 
-   完成 `audio_scope_report.json`、`audio_source_report.json`、已有字幕盘点和只读环境检测后，才向用户展示一次性确认单。文件夹清单、范围、ASR/翻译/QC 模型、输出格式与 WAV-only 偏好必须在同一条消息中确认；不要先单独询问范围。试听、DLC、EX、bonus、特典不能被默认排除；只有用户确认 `all` 时才全量处理。无 SE 目录只作为 ASR 来源优先候选，不等于自动只翻无 SE。
+   完成 `audio_scope_report.json`、`audio_source_report.json`、已有字幕盘点和只读环境检测后，运行 `render_preflight_questionnaire.py` 生成确认单并原样展示给用户。文件夹清单、范围、ASR/翻译/QC 模型、输出格式与 WAV-only 偏好必须在同一条消息中确认；不要先单独询问范围。试听、DLC、EX、bonus、特典不能被默认排除；只有用户确认 `all` 时才全量处理。无 SE 目录只作为 ASR 来源优先候选，不等于自动只翻无 SE。
+
+   ```bash
+   python scripts/render_preflight_questionnaire.py "$PROJECT_ROOT" --source-project-dir "$SOURCE_PROJECT_DIR"
+   ```
 
    用户一次性确认范围和 WAV-only 偏好后，如果本轮需要新 ASR，运行 `resolve_wav_only_asr_tracks.py` 并传入完整 `audio_source_report.json`。范围选择不等于 ASR 音源选择：如果选中的 WAV 曲目能在其他目录匹配到同轨、时长相符、非试听/占位的原生 MP3，脚本自动用该 MP3 识别，不能再询问 WAV 转码。只有报告最终列出 `wav_only_tracks` 时，直接应用确认单中选择的临时 16 kHz 双声道 MP3 缓存或原始 WAV；仅在该字段缺失时补问。将该选择、报告和真正 WAV-only 轨道与质量模式、ASR/翻译/QC 模型、输出格式一起写入本次运行记录。完整命令见 `docs/preflight_confirmation.md`。
 
@@ -111,6 +115,7 @@ DLsite 音声自带字幕常见格式是 WebVTT。默认最终导出格式按 `.
      --confirmation-source explicit_user \
      --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
      --preflight-questions-presented \
+     --preflight-questionnaire "$PROJECT_ROOT/preflight_questionnaire.md" \
      --confirmed-item scope \
      --confirmed-item quality_mode \
      --confirmed-item asr \

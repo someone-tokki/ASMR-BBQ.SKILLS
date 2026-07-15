@@ -22,6 +22,15 @@ python scripts/select_asr_audio_source.py "$SOURCE_PROJECT_DIR" \
 
 `scan_audio_scope.py` 决定“哪些文件夹/音频进入本轮翻译范围”。`select_asr_audio_source.py` 决定“这些目标内容优先用哪个音源做 ASR”。无 SE 目录是 ASR 候选来源，不等于自动只翻无 SE 目录。
 
+扫描完成后，必须先生成确认单，再将该文件原样展示给用户：
+
+```bash
+python scripts/render_preflight_questionnaire.py "$PROJECT_ROOT" \
+  --source-project-dir "$SOURCE_PROJECT_DIR"
+```
+
+生成的 `$PROJECT_ROOT/preflight_questionnaire.md` 固定包含七项必问内容。不得由 agent 自行缩写、拆分或替换为“是否同意上传到某服务”这类单项问题。
+
 用户回复统一确认单后，只有本轮需要新 ASR 时才运行：
 
 ```bash
@@ -86,11 +95,11 @@ python scripts/resolve_wav_only_asr_tracks.py \
 
 本篇或其他目录中已经有可靠、同轨且时长匹配的 MP3 时，会自动直接使用 MP3，并明确告知这一结果；不会询问 WAV 转码，也不会重新转换。
 
-5. 翻译模型
-建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
+5. 翻译模型与调用路线
+建议：批量翻译优先使用非 reasoning instruct/chat 模型，例如 `Qwen2.5-32B-Instruct-GGUF-Q4_K_M` 或其他已验证的快速日译中模型。若当前 agent 可见合适的字幕翻译 MCP，可选择“指定 MCP server/tool → 该工具配置的模型”；MCP 负责自身凭据，不向 agent 暴露 Key，agent 仍须完成本项目 preflight。若用户选择 Qwen3.x/reasoning/未知模型，先跑行为探测确认 no-thinking、速度和 JSON 稳定性。
 
-6. QC 模型
-建议：standard 可用较快模型，premium 用强模型。无论第几轮 QC，都必须调用配置的 QC 模型，不用 agent 自审替代。
+6. QC 模型与调用路线
+建议：standard 可用较快模型，premium 用强模型。若选择 MCP，使用其明确的字幕 QC 工具生成候选报告，绝不直接改字幕；无论第几轮 QC，都必须调用已确认的模型/MCP 工具，不用 agent 自审替代。
 
 7. 输出格式
 - vtt
@@ -128,6 +137,7 @@ python scripts/prepare_run_profile.py "$PROJECT_ROOT" \
   --confirmation-source explicit_user \
   --confirmation-text "User confirmed scope, quality mode, ASR/translation/QC models, and output format." \
   --preflight-questions-presented \
+  --preflight-questionnaire "$PROJECT_ROOT/preflight_questionnaire.md" \
   --confirmed-item scope \
   --confirmed-item quality_mode \
   --confirmed-item asr \

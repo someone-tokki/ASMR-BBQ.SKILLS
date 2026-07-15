@@ -103,10 +103,6 @@ def build_command(args: argparse.Namespace, input_srt: Path, output_srt: Path, p
         command.append("--plan-only")
     if args.project_root:
         command.extend(["--project-root", args.project_root])
-    if args.no_preflight_check:
-        command.append("--no-preflight-check")
-    if args.require_preflight:
-        command.append("--require-preflight")
     return command
 
 
